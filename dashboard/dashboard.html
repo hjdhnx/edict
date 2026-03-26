@@ -1714,16 +1714,40 @@ function renderLiveActivity(data){
   }
 }
 
-function fmtActivityTime(ts){
-  if(!ts)return '';
+function parseDateFlexible(ts){
+  if(ts===null||ts===undefined||ts==='') return null;
+  if(ts instanceof Date) return isNaN(ts.getTime())?null:ts;
   if(typeof ts==='number'){
-    const d=new Date(ts);
-    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+    const ms = ts > 1e12 ? ts : ts * 1000;
+    const d = new Date(ms);
+    return isNaN(d.getTime()) ? null : d;
   }
-  if(typeof ts==='string'&&ts.length>=19){
-    return ts.substring(11,19);
+  if(typeof ts!=='string') return null;
+  const s = ts.trim();
+  if(!s) return null;
+  if(/^\d+$/.test(s)){
+    const n = Number(s);
+    if(Number.isFinite(n)){
+      const ms = n > 1e12 ? n : n * 1000;
+      const d = new Date(ms);
+      return isNaN(d.getTime()) ? null : d;
+    }
   }
-  return String(ts).substring(0,8);
+  const localMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/);
+  if(localMatch){
+    const [, y, m, d, h, mi, se] = localMatch;
+    const dt = new Date(Number(y), Number(m)-1, Number(d), Number(h), Number(mi), Number(se));
+    return isNaN(dt.getTime()) ? null : dt;
+  }
+  const iso = s.includes(' ') ? s.replace(' ', 'T') : s;
+  const parsed = new Date(iso);
+  return isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function fmtActivityTime(ts){
+  const d = parseDateFlexible(ts);
+  if(!d) return '';
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
 }
 
 /* ══ MODEL CONFIG ══ */
@@ -2149,8 +2173,8 @@ function extractAgent(t){
 function timeAgo(iso){
   if(!iso) return '';
   try{
-    const d = new Date(iso.includes('T')?iso:iso.replace(' ','T')+'Z');
-    if(isNaN(d.getTime())) return '';
+    const d = parseDateFlexible(iso);
+    if(!d) return '';
     const diff = Date.now() - d.getTime();
     const mins = Math.floor(diff/60000);
     if(mins<0) return '刚刚';

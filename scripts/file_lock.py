@@ -68,7 +68,7 @@ def atomic_json_read(path: pathlib.Path, default: Any = None) -> Any:
     try:
         _lock_shared(fd)
         try:
-            return json.loads(path.read_text()) if path.exists() else default
+            return json.loads(path.read_text(encoding='utf-8')) if path.exists() else default
         except Exception:
             return default
     finally:
@@ -93,7 +93,7 @@ def atomic_json_update(
         _lock_exclusive(fd)
         # Read
         try:
-            data = json.loads(path.read_text()) if path.exists() else default
+            data = json.loads(path.read_text(encoding='utf-8')) if path.exists() else default
         except Exception:
             data = default
         # Modify
