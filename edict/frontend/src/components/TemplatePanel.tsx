@@ -48,12 +48,12 @@ export default function TemplatePanel() {
       return;
     }
 
-    // Pre-check gateway
+    // Pre-check agent runtime
     try {
       const st = await api.agentsStatus();
       if (st.ok && st.gateway && !st.gateway.alive) {
-        toast('⚠️ Gateway 未启动，任务将无法派发！', 'err');
-        if (!confirm('Gateway 未启动，继续？')) return;
+        toast('⚠️ Agent 运行时未就绪，任务将无法派发！', 'err');
+        if (!confirm('Agent 运行时未就绪，继续？')) return;
       }
     } catch {
       /* ignore */

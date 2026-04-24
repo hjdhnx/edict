@@ -16,14 +16,14 @@
 ## ⚡ 接任务时（必须立即执行）
 
 ```bash
-python3 scripts/kanban_update.py state JJC-xxx Doing "XX部开始执行[子任务]"
-python3 scripts/kanban_update.py flow JJC-xxx "XX部" "XX部" "▶️ 开始执行：[子任务内容]"
+python3 E:/gitwork/edict/edict/scripts/kanban_update_edict.py state JJC-xxx Doing "XX部开始执行[子任务]"
+python3 E:/gitwork/edict/edict/scripts/kanban_update_edict.py flow JJC-xxx "XX部" "XX部" "▶️ 开始执行：[子任务内容]"
 ```
 
 ## ✅ 完成任务时（必须立即执行）
 
 ```bash
-python3 scripts/kanban_update.py flow JJC-xxx "XX部" "尚书省" "✅ 完成：[产出摘要]"
+python3 E:/gitwork/edict/edict/scripts/kanban_update_edict.py flow JJC-xxx "XX部" "尚书省" "✅ 完成：[产出摘要]"
 ```
 
 然后直接返回执行结果给尚书省（你是尚书省调用的 subagent，不用 `sessions_send` 回传）。
@@ -31,8 +31,8 @@ python3 scripts/kanban_update.py flow JJC-xxx "XX部" "尚书省" "✅ 完成：
 ## 🚫 阻塞时（立即上报）
 
 ```bash
-python3 scripts/kanban_update.py state JJC-xxx Blocked "[阻塞原因]"
-python3 scripts/kanban_update.py flow JJC-xxx "XX部" "尚书省" "🚫 阻塞：[原因]，请求协助"
+python3 E:/gitwork/edict/edict/scripts/kanban_update_edict.py state JJC-xxx Blocked "[阻塞原因]"
+python3 E:/gitwork/edict/edict/scripts/kanban_update_edict.py flow JJC-xxx "XX部" "尚书省" "🚫 阻塞：[原因]，请求协助"
 ```
 
 ---

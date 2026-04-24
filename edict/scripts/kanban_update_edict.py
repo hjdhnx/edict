@@ -25,7 +25,7 @@ log = logging.getLogger('kanban')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(message)s', datefmt='%H:%M:%S')
 
 # Edict API 地址 — 环境变量 > 默认 localhost:8000
-EDICT_API_URL = os.environ.get('EDICT_API_URL', 'http://localhost:8000')
+EDICT_API_URL = os.environ.get('EDICT_API_URL', 'http://localhost:7898')
 
 # 是否启用 API 模式（EDICT_MODE=api | json | auto）
 EDICT_MODE = os.environ.get('EDICT_MODE', 'auto').lower()
@@ -45,11 +45,12 @@ STATE_ORG_MAP = {
 }
 
 # State → Edict TaskState value 映射
+# Edict API 使用 PascalCase 枚举值（如 Zhongshu, Menxia）
 _STATE_TO_EDICT = {
-    'Taizi': 'taizi', 'Zhongshu': 'zhongshu', 'Menxia': 'menxia',
-    'Assigned': 'assigned', 'Next': 'next', 'Doing': 'doing',
-    'Review': 'review', 'Done': 'done', 'Blocked': 'blocked',
-    'Cancelled': 'cancelled', 'Pending': 'pending',
+    'Taizi': 'Taizi', 'Zhongshu': 'Zhongshu', 'Menxia': 'Menxia',
+    'Assigned': 'Assigned', 'Next': 'Next', 'Doing': 'Doing',
+    'Review': 'Review', 'Done': 'Done', 'Blocked': 'Blocked',
+    'Cancelled': 'Cancelled', 'Pending': 'Pending',
 }
 
 
@@ -104,6 +105,20 @@ def _infer_agent_id():
 
 # ── API 客户端 ──
 
+_UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
+
+
+def _task_api_base(task_id: str) -> str:
+    """根据 task_id 格式返回正确的 API 前缀。
+
+    UUID 格式（edict 原生） → /api/tasks/{task_id}
+    JJC 格式（旧版兼容）   → /api/tasks/by-legacy/{task_id}
+    """
+    if _UUID_RE.match(task_id):
+        return f'/api/tasks/{task_id}'
+    return f'/api/tasks/by-legacy/{task_id}'
+
+
 def _api_available() -> bool:
     """检查 Edict API 是否可用。"""
     if EDICT_MODE == 'json':
@@ -134,6 +149,15 @@ def _api_post(path: str, data: dict) -> dict | None:
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        detail = ''
+        try:
+            detail = json.loads(e.read()).get('detail', '')
+        except Exception:
+            pass
+        log.warning(f'API 调用失败 ({path}): HTTP {e.code} {detail or e.reason}')
+        print(f'[看板] API 错误: HTTP {e.code} — {detail}', flush=True)
+        return None
     except Exception as e:
         log.warning(f'API 调用失败 ({path}): {e}')
         return None
@@ -152,6 +176,15 @@ def _api_put(path: str, data: dict) -> dict | None:
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        detail = ''
+        try:
+            detail = json.loads(e.read()).get('detail', '')
+        except Exception:
+            pass
+        log.warning(f'API 调用失败 ({path}): HTTP {e.code} {detail or e.reason}')
+        print(f'[看板] API 错误: HTTP {e.code} — {detail}', flush=True)
+        return None
     except Exception as e:
         log.warning(f'API 调用失败 ({path}): {e}')
         return None
@@ -220,11 +253,10 @@ def cmd_create(task_id, title, state, org, official, remark=None):
 
 def cmd_state(task_id, new_state, now_text=None):
     if _check_api():
-        edict_state = _STATE_TO_EDICT.get(new_state, new_state.lower())
+        edict_state = _STATE_TO_EDICT.get(new_state, new_state)
         agent = _infer_agent_id()
-        # 需要先通过 legacy_id 查找 edict task_id
-        # 暂用 legacy_id tag 搜索
-        result = _api_post(f'/api/tasks/by-legacy/{task_id}/transition', {
+        base = _task_api_base(task_id)
+        result = _api_post(f'{base}/transition', {
             'new_state': edict_state,
             'agent': agent,
             'reason': now_text or f'状态更新为 {new_state}',
@@ -244,7 +276,8 @@ def cmd_flow(task_id, from_dept, to_dept, remark):
     clean_remark = _sanitize_remark(remark)
     if _check_api():
         agent = _infer_agent_id()
-        result = _api_post(f'/api/tasks/by-legacy/{task_id}/progress', {
+        base = _task_api_base(task_id)
+        result = _api_post(f'{base}/progress', {
             'agent': agent,
             'content': f'流转: {from_dept} → {to_dept} | {clean_remark}',
         })
@@ -260,7 +293,8 @@ def cmd_flow(task_id, from_dept, to_dept, remark):
 def cmd_done(task_id, output_path='', summary=''):
     if _check_api():
         agent = _infer_agent_id()
-        result = _api_post(f'/api/tasks/by-legacy/{task_id}/transition', {
+        base = _task_api_base(task_id)
+        result = _api_post(f'{base}/transition', {
             'new_state': 'done',
             'agent': agent,
             'reason': summary or '任务已完成',
@@ -277,7 +311,8 @@ def cmd_done(task_id, output_path='', summary=''):
 def cmd_block(task_id, reason):
     if _check_api():
         agent = _infer_agent_id()
-        result = _api_post(f'/api/tasks/by-legacy/{task_id}/transition', {
+        base = _task_api_base(task_id)
+        result = _api_post(f'{base}/transition', {
             'new_state': 'blocked',
             'agent': agent,
             'reason': reason,
@@ -317,14 +352,15 @@ def cmd_progress(task_id, now_text, todos_pipe='', tokens=0, cost=0.0, elapsed=0
 
     if _check_api():
         agent = _infer_agent_id()
+        base = _task_api_base(task_id)
         # 更新进度
-        _api_post(f'/api/tasks/by-legacy/{task_id}/progress', {
+        _api_post(f'{base}/progress', {
             'agent': agent,
             'content': clean,
         })
         # 更新 todos
         if parsed_todos:
-            _api_put(f'/api/tasks/by-legacy/{task_id}/todos', {
+            _api_put(f'{base}/todos', {
                 'todos': parsed_todos,
             })
         log.info(f'📡 {task_id} 进展: {clean[:40]}...')
@@ -343,7 +379,8 @@ def cmd_todo(task_id, todo_id, title, status='not-started', detail=''):
         # 读取现有 todos，更新后写回
         # 这里简化处理，直接发进度更新
         agent = _infer_agent_id()
-        _api_post(f'/api/tasks/by-legacy/{task_id}/progress', {
+        base = _task_api_base(task_id)
+        _api_post(f'{base}/progress', {
             'agent': agent,
             'content': f'Todo #{todo_id}: {title} → {status}',
         })

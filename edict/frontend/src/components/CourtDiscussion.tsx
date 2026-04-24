@@ -102,6 +102,13 @@ export default function CourtDiscussion() {
     autoPlayRef.current = autoPlay;
   }, [autoPlay]);
 
+  // 进入 session 后自动触发第一轮讨论
+  useEffect(() => {
+    if (phase === 'session' && session && session.round === 0 && !loading) {
+      handleAdvance();
+    }
+  }, [phase, session?.session_id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!autoPlay || !session || loading) return;
     const timer = setInterval(() => {

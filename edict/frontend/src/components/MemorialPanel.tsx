@@ -183,6 +183,26 @@ function MemorialDetailModal({
           {renderPhase('六部执行', '⚔️', execLog)}
           {renderPhase('汇总回奏', '📨', resultLog)}
 
+          {/* 进展记录 — 展示 agent 工作过程和结果 */}
+          {(() => {
+            const plog = t.progress_log || [];
+            if (!plog.length) return null;
+            return (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line)' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>📝 执行记录</div>
+                <div className="md-timeline">
+                  {plog.map((p: any, i: number) => (
+                    <div className="md-tl-item" key={i}>
+                      <div className="md-tl-dot" />
+                      <div style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}>{p.content || p.text || ''}</div>
+                      <div className="md-tl-time">{(p.ts || p.at || '').substring(0, 19).replace('T', ' ')}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
           {t.output && t.output !== '-' && (
             <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line)' }}>
               <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>📦 产出物</div>

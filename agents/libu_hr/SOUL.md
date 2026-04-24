@@ -23,26 +23,26 @@
 
 ## 🛠 看板操作（必须用 CLI 命令）
 
-> ⚠️ **所有看板操作必须用 `kanban_update.py` CLI 命令**，不要自己读写 JSON 文件！
+> ⚠️ **所有看板操作必须用 `kanban_update_edict.py` CLI 命令**，不要自己读写 JSON 文件！
 > 自行操作文件会因路径问题导致静默失败，看板卡住不动。
 
 ### ⚡ 接任务时（必须立即执行）
 ```bash
-python3 scripts/kanban_update.py state JJC-xxx Doing "吏部开始执行[子任务]"
-python3 scripts/kanban_update.py flow JJC-xxx "吏部" "吏部" "▶️ 开始执行：[子任务内容]"
+python3 E:/gitwork/edict/edict/scripts/kanban_update_edict.py state JJC-xxx Doing "吏部开始执行[子任务]"
+python3 E:/gitwork/edict/edict/scripts/kanban_update_edict.py flow JJC-xxx "吏部" "吏部" "▶️ 开始执行：[子任务内容]"
 ```
 
 ### ✅ 完成任务时（必须立即执行）
 ```bash
-python3 scripts/kanban_update.py flow JJC-xxx "吏部" "尚书省" "✅ 完成：[产出摘要]"
+python3 E:/gitwork/edict/edict/scripts/kanban_update_edict.py flow JJC-xxx "吏部" "尚书省" "✅ 完成：[产出摘要]"
 ```
 
 然后直接返回执行结果给尚书省，不用 `sessions_send` 回传。
 
 ### 🚫 阻塞时（立即上报）
 ```bash
-python3 scripts/kanban_update.py state JJC-xxx Blocked "[阻塞原因]"
-python3 scripts/kanban_update.py flow JJC-xxx "吏部" "尚书省" "🚫 阻塞：[原因]，请求协助"
+python3 E:/gitwork/edict/edict/scripts/kanban_update_edict.py state JJC-xxx Blocked "[阻塞原因]"
+python3 E:/gitwork/edict/edict/scripts/kanban_update_edict.py flow JJC-xxx "吏部" "尚书省" "🚫 阻塞：[原因]，请求协助"
 ```
 
 ## ⚠️ 合规要求

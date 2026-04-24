@@ -200,17 +200,16 @@ class OrchestratorWorker:
         if new_state == TaskState.Assigned:
             org = payload.get("assignee_org", "")
             if org:
-                agent = ORG_AGENT_MAP.get(org, agent)
+                org_agent = ORG_AGENT_MAP.get(org)
+                if org_agent:
+                    agent = org_agent
+                else:
+                    log.info(f"Task {task_id} Assigned: org '{org}' not in ORG_AGENT_MAP, falling back to '{agent}'")
             else:
-                # assignee_org 为空时，无法确定目标部门
-                # 派发给尚书省让其决定分配
-                log.warning(
-                    f"Task {task_id} entering Assigned without assignee_org, "
-                    f"dispatching to shangshu for manual routing"
-                )
                 agent = "shangshu"
 
         if agent:
+            log.info(f"📤 Auto-dispatching task {task_id} → agent '{agent}' (state={new_state_str})")
             await self.bus.publish(
                 topic=TOPIC_TASK_DISPATCH,
                 trace_id=trace_id,

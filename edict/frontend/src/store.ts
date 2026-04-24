@@ -58,7 +58,8 @@ export function stateLabel(t: Task): string {
 }
 
 export function isEdict(t: Task): boolean {
-  return /^JJC-/i.test(t.id || '');
+  const id = t.id || '';
+  return /^JJC-/i.test(id) || /^[0-9a-f]{8}-/i.test(id);
 }
 
 export function isSession(t: Task): boolean {
@@ -92,7 +93,7 @@ export const TAB_DEFS: { key: TabKey; label: string; icon: string }[] = [
   { key: 'officials', label: '官员总览', icon: '👔' },
   { key: 'models',    label: '模型配置', icon: '🤖' },
   { key: 'skills',    label: '技能配置', icon: '🎯' },
-  { key: 'sessions',  label: '小任务',   icon: '💬' },
+  { key: 'sessions',  label: '执行进度', icon: '💬' },
   { key: 'memorials', label: '奏折阁',   icon: '📜' },
   { key: 'templates', label: '旨库',     icon: '📋' },
   { key: 'morning',   label: '天下要闻', icon: '🌅' },

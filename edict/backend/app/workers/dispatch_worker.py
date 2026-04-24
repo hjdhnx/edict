@@ -1,4 +1,6 @@
-"""Dispatch Worker — 消费 task.dispatch 事件，执行 OpenClaw agent 调用。
+"""Dispatch Worker — 消费 task.dispatch 事件，通过 Agent Runtime Adapter 调用 Agent。
+
+支持多种 Agent 运行时后端（OpenClaw、AstrBot 等），通过 DISPATCH_BACKEND 配置切换。
 
 核心解决旧架构痛点：
 - 旧: daemon 线程 + subprocess.run → kill -9 丢失一切
@@ -7,7 +9,7 @@
 流程:
 1. 从 task.dispatch stream 消费事件
 2. 组装富上下文 (_build_agent_context)
-3. 调用 OpenClaw CLI: `openclaw agent --agent xxx -m "..."`
+3. 通过 Adapter 调用 Agent 运行时
 4. 解析 agent 输出（kanban_update.py 调用结果）
 5. ACK 事件
 """
@@ -15,16 +17,13 @@
 import asyncio
 import json
 import logging
-import os
 import pathlib
 import re
 import signal
-import subprocess
-import tempfile
 import time
-import uuid
 from datetime import datetime, timezone
 
+from ..adapters import create_adapter
 from ..config import get_settings
 from ..services.event_bus import (
     EventBus,
@@ -172,6 +171,14 @@ def _build_reminder(agent_id: str, payload: dict) -> str:
 
     if not reminders:
         return ""
+
+    # 所有看板操作必须走看板脚本，严禁自己写代码调 API
+    reminders.append(
+        '⚠️ 所有看板操作必须通过命令行脚本执行！'
+        '例如上报进度: python3 E:/gitwork/edict/edict/scripts/kanban_update_edict.py progress <任务ID> "内容" "计划"'
+        '严禁用 Python urllib/requests 自己调 API！API 地址由脚本内部管理。'
+    )
+
     return "\n\n## ⚡ Reminder\n" + "\n".join(f"- {r}" for r in reminders)
 
 
@@ -317,13 +324,14 @@ class DispatchWorker:
 
     def __init__(self):
         self.bus = EventBus()
+        self._adapter = create_adapter()
         self._running = False
         self._buckets: dict[str, asyncio.Semaphore] = {
             name: asyncio.Semaphore(cfg["limit"])
             for name, cfg in self._BUCKET_CONFIG.items()
         }
         self._active_tasks: dict[str, asyncio.Task] = {}
-        self._inflight: set[str] = set()
+        self._inflight: set[str] = set()  # keyed by "task_id:agent"
         # 执行时间记录（仅用于监控告警）
         self._durations: dict[str, list[float]] = {}
 
@@ -388,12 +396,13 @@ class DispatchWorker:
         trace_id = event.get("trace_id", "")
         state = payload.get("state", "")
 
-        # 去重：同一任务如果已在派发中，跳过并 ACK
-        if task_id in self._inflight:
-            log.warning(f"⚡ Skipping duplicate dispatch for task {task_id} (already in-flight)")
+        # 去重：同一任务+同一agent如果已在派发中，跳过并 ACK
+        inflight_key = f"{task_id}:{agent}"
+        if inflight_key in self._inflight:
+            log.warning(f"⚡ Skipping duplicate dispatch for {inflight_key} (already in-flight)")
             await self.bus.ack(TOPIC_TASK_DISPATCH, GROUP, entry_id)
             return
-        self._inflight.add(task_id)
+        self._inflight.add(inflight_key)
 
         sem = self._get_bucket(agent)
         async with sem:
@@ -426,7 +435,7 @@ class DispatchWorker:
 
             try:
                 start_time = time.monotonic()
-                result = await self._call_openclaw(agent, enriched_message, task_id, trace_id, payload)
+                result = await self._adapter.invoke(agent, enriched_message, task_id, trace_id, payload)
                 elapsed = time.monotonic() - start_time
 
                 # 记录执行时间（仅用于监控和告警）
@@ -480,8 +489,8 @@ class DispatchWorker:
                 stderr = result.get("stderr", "")
                 if "TIMEOUT" in stderr:
                     raise DispatchError("Agent timeout", retryable=True)
-                elif "command not found" in stderr:
-                    raise DispatchError("openclaw binary missing", retryable=False)
+                elif "command not found" in stderr or "connection refused" in stderr:
+                    raise DispatchError("Agent runtime unreachable", retryable=False)
                 elif result["returncode"] in (1, 2):
                     raise DispatchError(
                         f"Agent failed: rc={result['returncode']}", retryable=True
@@ -537,97 +546,7 @@ class DispatchWorker:
                 log.error(f"❌ Dispatch failed: task {task_id} → {agent}: {e}", exc_info=True)
                 # 不 ACK → Redis 会重新投递给其他消费者
             finally:
-                self._inflight.discard(task_id)
-
-    async def _call_openclaw(
-        self,
-        agent: str,
-        message: str,
-        task_id: str,
-        trace_id: str,
-        payload: dict | None = None,
-    ) -> dict:
-        """异步调用 OpenClaw CLI — 在线程池中执行，带富上下文注入。"""
-        settings = get_settings()
-        cmd = [
-            settings.openclaw_bin,
-            "agent",
-            "--agent", agent,
-            "-m", message,
-        ]
-
-        env = os.environ.copy()
-        env["EDICT_TASK_ID"] = task_id
-        env["EDICT_TRACE_ID"] = trace_id
-        env["EDICT_API_URL"] = f"http://localhost:{settings.port}"
-
-        # 注入额外上下文环境变量
-        if payload:
-            env["EDICT_TASK_TITLE"] = payload.get("title", "")
-            env["EDICT_TASK_STATE"] = payload.get("state", "")
-            env["EDICT_TASK_ORG"] = payload.get("org", "")
-            env["EDICT_TASK_PRIORITY"] = payload.get("priority", "中")
-            tags = payload.get("tags", [])
-            if tags:
-                env["EDICT_TASK_TAGS"] = ",".join(str(t) for t in tags)
-
-        # 写入临时上下文文件（大型上下文通过文件传递，避免命令行参数过长）
-        context_file = None
-        if payload:
-            context_data = {
-                "task_id": task_id,
-                "trace_id": trace_id,
-                "title": payload.get("title", ""),
-                "description": payload.get("description", ""),
-                "state": payload.get("state", ""),
-                "org": payload.get("org", ""),
-                "priority": payload.get("priority", "中"),
-                "tags": payload.get("tags", []),
-                "todos": payload.get("todos", []),
-                "flow_log": payload.get("flow_log", [])[-10:],
-                "progress_log": payload.get("progress_log", [])[-5:],
-                "block": payload.get("block", ""),
-                "meta": payload.get("meta", {}),
-            }
-            try:
-                fd, context_file = tempfile.mkstemp(suffix=".json", prefix=f"edict_ctx_{task_id}_")
-                with os.fdopen(fd, "w") as f:
-                    json.dump(context_data, f, ensure_ascii=False, indent=2)
-                env["EDICT_CONTEXT_FILE"] = context_file
-            except Exception as e:
-                log.warning(f"Failed to write context file for {task_id}: {e}")
-
-        log.debug(f"Executing: {' '.join(cmd)}")
-
-        def _run():
-            try:
-                proc = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=300,
-                    env=env,
-                    cwd=settings.openclaw_project_dir or None,
-                )
-                return {
-                    "returncode": proc.returncode,
-                    "stdout": proc.stdout[-5000:] if proc.stdout else "",
-                    "stderr": proc.stderr[-2000:] if proc.stderr else "",
-                }
-            except subprocess.TimeoutExpired:
-                return {"returncode": -1, "stdout": "", "stderr": "TIMEOUT after 300s"}
-            except FileNotFoundError:
-                return {"returncode": -1, "stdout": "", "stderr": "openclaw command not found"}
-            finally:
-                # 清理临时上下文文件
-                if context_file:
-                    try:
-                        os.unlink(context_file)
-                    except OSError:
-                        pass
-
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _run)
+                self._inflight.discard(inflight_key)
 
 
 async def run_dispatcher():

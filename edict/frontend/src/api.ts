@@ -148,6 +148,7 @@ export interface Task {
   output: string;
   heartbeat: Heartbeat;
   flow_log: FlowEntry[];
+  progress_log: { ts?: string; at?: string; agent?: string; content?: string; text?: string }[];
   todos: TodoItem[];
   review_round: number;
   archived: boolean;

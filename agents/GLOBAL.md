@@ -4,26 +4,77 @@
 
 ---
 
+## 🔧 环境变量
+
+> **看板脚本路径**（所有 `kanban_update` 命令统一使用此路径）:
+> ```
+> KANBAN=python3 E:/gitwork/edict/edict/scripts/kanban_update_edict.py
+> ```
+> 下面文档中 `python3 E:/gitwork/edict/edict/scripts/kanban_update_edict.py` 可简写为 `python3 E:/gitwork/edict/edict/scripts/kanban_update_edict.py`。
+
+> ⚠️ **严禁自己写代码访问 API！所有看板操作必须通过 `python3 E:/gitwork/edict/edict/scripts/kanban_update_edict.py` 脚本执行！**
+> API 地址由脚本内部处理（`localhost:7898`），**绝对不要**自己用 Python urllib/requests 去调 API。
+> 自己写代码访问 `localhost:8000` 等端口会连接失败！
+
+---
+
+## ⚠️ 状态流转路径（严禁跳步！）
+
+> 🚨🚨🚨 **所有 Agent 必须严格遵守以下状态流转顺序，严禁跳步！**
+> 跳步会被系统拒绝（400 错误），导致任务卡住。
+
+```
+合法流转路径（单向，按序推进）:
+
+  Taizi → Zhongshu → Menxia → Assigned → Doing → Review → Done
+    ↓                    ↓                   ↓         ↓
+  Cancelled           Cancelled           Blocked   Cancelled
+                                          Cancelled
+```
+
+**各 Agent 只能执行自己负责的流转：**
+- 太子：`Taizi → Zhongshu`（分拣完毕立即流转，**太子不执行具体任务！**）
+- 中书省：`Zhongshu → Menxia`（方案提交审议）
+- 门下省：`Menxia → Assigned`（准奏）或 `Menxia → Zhongshu`（封驳回退）
+- 尚书省：`Assigned → Doing`（派发六部执行）
+- 六部：`Doing → Review`（执行完毕提交审核）
+- 尚书省：`Review → Done`（审核通过，任务完成）完成后**必须**执行 `python3 E:/gitwork/edict/edict/scripts/kanban_update_edict.py done <id> "" "<产出摘要>"`
+
+> ⚠️ **绝不允许**从 Taizi 直接跳到 Done/Doing/Review 等远端状态！
+> 如果 `state` 命令返回 400 错误，请查看错误信息中的 `Allowed` 列表，选择合法的下一状态。
+
+> 🚨 **太子最高铁律：收到任务后只做两件事：① 上报 progress ② 执行 `python3 E:/gitwork/edict/edict/scripts/kanban_update_edict.py state <任务ID> Zhongshu "分拣完毕，转交中书省"`**
+> 太子**绝对禁止**自己执行任务内容！无论任务多简单，都必须流转给中书省走完整流程。
+> 不流转 = 任务永远卡在 Taizi = 皇上看不到结果 = 严重失职！
+
+---
+
 ## ⚠️ 看板操作强制规则
 
-> ⚠️ **所有看板操作必须用 `kanban_update.py` CLI 命令**，不要自己读写 JSON 文件！
+> ⚠️ **所有看板操作必须用看板脚本 CLI 命令**，不要自己读写 JSON 文件！
 > 自行操作文件会因路径问题导致静默失败，看板卡住不动。
 
 ### 看板命令参考
 
 ```bash
 # 更新状态
-python3 scripts/kanban_update.py state <id> <state> "<说明>"
+python3 E:/gitwork/edict/edict/scripts/kanban_update_edict.py state <id> <state> "<说明>"
 
 # 流转记录
-python3 scripts/kanban_update.py flow <id> "<from>" "<to>" "<remark>"
+python3 E:/gitwork/edict/edict/scripts/kanban_update_edict.py flow <id> "<from>" "<to>" "<remark>"
 
 # 实时进展上报
-python3 scripts/kanban_update.py progress <id> "<当前在做什么>" "<计划1✅|计划2🔄|计划3>"
+python3 E:/gitwork/edict/edict/scripts/kanban_update_edict.py progress <id> "<当前在做什么>" "<计划1✅|计划2🔄|计划3>"
 
 # 子任务管理
-python3 scripts/kanban_update.py todo <id> <todo_id> "<title>" <status> --detail "<产出详情>"
+python3 E:/gitwork/edict/edict/scripts/kanban_update_edict.py todo <id> <todo_id> "<title>" <status> --detail "<产出详情>"
+
+# 标记完成（必须写入产出摘要！）
+python3 E:/gitwork/edict/edict/scripts/kanban_update_edict.py done <id> "" "<任务完成摘要：做了什么、结果是什么>"
 ```
+
+> 🚨 **完成任务时必须调用 `done` 命令**，并在第三个参数写明产出摘要（你做了什么、最终结果是什么）。
+> 这条摘要是皇上看结果的唯一渠道！不写 = 皇上看不到产出 = 严重失职！
 
 ---
 
@@ -37,7 +88,7 @@ python3 scripts/kanban_update.py todo <id> <todo_id> "<title>" <status> --detail
 
 ```bash
 # 完成任务后，上报具体产出
-python3 scripts/kanban_update.py todo JJC-xxx 1 "[子任务名]" completed --detail "产出概要：\n- 要点1\n- 要点2\n验证结果：通过"
+python3 E:/gitwork/edict/edict/scripts/kanban_update_edict.py todo JJC-xxx 1 "[子任务名]" completed --detail "产出概要：\n- 要点1\n- 要点2\n验证结果：通过"
 ```
 
 ---

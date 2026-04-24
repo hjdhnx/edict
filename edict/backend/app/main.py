@@ -19,9 +19,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
+from .db import init_db
 from .services.event_bus import get_event_bus
 from .api import tasks, agents, events, admin, websocket
-from .api import legacy
+from .api import legacy, compat
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,6 +36,10 @@ async def lifespan(app: FastAPI):
     """应用生命周期管理。"""
     settings = get_settings()
     log.info(f"🏛️ Edict Backend starting on port {settings.port}...")
+
+    # 初始化数据库表（开发用，生产应走 Alembic）
+    await init_db()
+    log.info("✅ Database tables ready")
 
     # 连接 Event Bus
     bus = await get_event_bus()
@@ -70,6 +75,7 @@ app.include_router(events.router, prefix="/api/events", tags=["events"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(websocket.router, tags=["websocket"])
 app.include_router(legacy.router, prefix="/api/tasks", tags=["legacy"])
+app.include_router(compat.router, tags=["compat"])
 
 
 @app.get("/health")

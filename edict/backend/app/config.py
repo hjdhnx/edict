@@ -27,10 +27,23 @@ class Settings(BaseSettings):
     secret_key: str = "change-me-in-production"
     debug: bool = False
 
+    # ── Agent Runtime ──
+    dispatch_backend: str = "openclaw"  # "openclaw" | "astrbot"
+
     # ── OpenClaw ──
     openclaw_gateway_url: str = "http://localhost:18789"
     openclaw_bin: str = "openclaw"
     openclaw_project_dir: str | None = None
+
+    # ── AstrBot ──
+    astrbot_api_url: str = "http://localhost:6185"
+    astrbot_api_key: str = ""
+    astrbot_timeout_sec: int = 300
+
+    # ── LLM 直调（朝议等场景用） ──
+    llm_api_url: str = ""         # OpenAI-compatible API, e.g. https://api.openai.com/v1/chat/completions
+    llm_api_key: str = ""
+    llm_model: str = "gpt-4o-mini"
 
     # ── Legacy 兼容 ──
     legacy_data_dir: str = "../data"

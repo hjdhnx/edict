@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useStore, isEdict, isArchived, getPipeStatus, stateLabel, deptColor, PIPE } from '../store';
 import { api, type Task } from '../api';
 
@@ -158,6 +159,8 @@ export default function EdictBoard() {
   const setEdictFilter = useStore((s) => s.setEdictFilter);
   const toast = useStore((s) => s.toast);
   const loadAll = useStore((s) => s.loadAll);
+  const [decreeText, setDecreeText] = useState('');
+  const [decreeOpen, setDecreeOpen] = useState(false);
 
   const tasks = liveStatus?.tasks || [];
   const allEdicts = tasks.filter(isEdict);
@@ -191,8 +194,66 @@ export default function EdictBoard() {
     } catch { toast('服务器连接失败', 'err'); }
   };
 
+  const handleDecree = async () => {
+    const text = decreeText.trim();
+    if (!text) { toast('请输入旨意内容', 'err'); return; }
+    try {
+      const r = await api.createTask({
+        title: text,
+        org: '中书省',
+        priority: '中',
+      });
+      if (r.ok) {
+        toast(`📜 旨意已下达`, 'ok');
+        setDecreeText('');
+        setDecreeOpen(false);
+        loadAll();
+      } else {
+        toast(r.error || '下旨失败', 'err');
+      }
+    } catch { toast('服务器连接失败', 'err'); }
+  };
+
   return (
     <div>
+      {/* Decree Input */}
+      <div style={{ marginBottom: 12 }}>
+        {decreeOpen ? (
+          <div style={{
+            background: 'var(--panel2)', border: '1px solid var(--line)',
+            borderRadius: 10, padding: 14,
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: 'var(--acc)' }}>
+              👑 自由下旨
+            </div>
+            <textarea
+              value={decreeText}
+              onChange={(e) => setDecreeText(e.target.value)}
+              placeholder="输入旨意内容，回车或点击下旨发送..."
+              style={{
+                width: '100%', minHeight: 60, resize: 'vertical',
+                background: 'var(--bg)', border: '1px solid var(--line)',
+                borderRadius: 6, padding: 8, fontSize: 13, color: 'var(--text)',
+                fontFamily: 'inherit',
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleDecree(); }
+              }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+              <button className="btn btn-g" onClick={() => setDecreeOpen(false)}
+                style={{ padding: '6px 14px', fontSize: 12 }}>取消</button>
+              <button className="tpl-go" onClick={handleDecree}
+                style={{ padding: '6px 18px', fontSize: 12 }}>📜 下旨</button>
+            </div>
+          </div>
+        ) : (
+          <button className="tpl-go" onClick={() => setDecreeOpen(true)}
+            style={{ padding: '6px 18px', fontSize: 12 }}>👑 下达旨意</button>
+        )}
+      </div>
+
       {/* Archive Bar */}
       <div className="archive-bar">
         <span className="ab-label">筛选:</span>
@@ -220,7 +281,7 @@ export default function EdictBoard() {
           <div className="empty" style={{ gridColumn: '1/-1' }}>
             暂无旨意<br />
             <small style={{ fontSize: 11, marginTop: 6, display: 'block', color: 'var(--muted)' }}>
-              通过飞书向太子发送任务，太子分拣后转中书省处理
+              点击上方「👑 下达旨意」创建新任务
             </small>
           </div>
         ) : (
