@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
@@ -13,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +23,7 @@ from ..config import get_settings
 from ..db import get_db
 from ..models.task import TaskState
 from ..services.event_bus import EventBus, get_event_bus, TOPIC_TASK_DISPATCH
+from ..services.morning_brief import DEFAULT_CATEGORIES, collect_morning_brief, normalize_morning_config
 from ..services.task_service import TaskService
 
 log = logging.getLogger("edict.api.compat")
@@ -72,6 +74,7 @@ AGENTS_DIR = _PROJECT_ROOT / "agents"
 DATA_DIR = _PROJECT_ROOT / "data"
 AGENT_CONFIG_PATH = DATA_DIR / "agent_config.json"
 MORNING_CONFIG_PATH = DATA_DIR / "morning_config.json"
+MORNING_BRIEF_PATH = DATA_DIR / "morning_brief.json"
 MODEL_CHANGE_LOG_LIMIT = 100
 
 DEFAULT_KNOWN_MODELS = [
@@ -83,14 +86,17 @@ DEFAULT_KNOWN_MODELS = [
 ]
 
 DEFAULT_MORNING_CONFIG = {
-    "categories": [],
+    "categories": [{"name": name, "enabled": True} for name in DEFAULT_CATEGORIES],
     "keywords": [],
     "custom_feeds": [],
     "wecom_webhook": "",
     "feishu_webhook": "",
-    "enabled": False,
-    "message": "天下要闻采集后端暂未启用；当前仅保存订阅配置。",
+    "enabled": True,
+    "message": "暂无天下要闻数据，请点击立即采集。",
 }
+
+_morning_refresh_lock = asyncio.Lock()
+_morning_refresh_running = False
 
 
 def _get_svc(db: AsyncSession = Depends(get_db)) -> TaskService:
@@ -727,40 +733,68 @@ class MorningConfigBody(BaseModel):
     custom_feeds: list[dict] = []
     wecom_webhook: str = ""
     feishu_webhook: str = ""
+    enabled: bool = True
+
+
+def _load_morning_config() -> dict:
+    config = _read_json(MORNING_CONFIG_PATH, DEFAULT_MORNING_CONFIG)
+    if not isinstance(config, dict):
+        config = DEFAULT_MORNING_CONFIG
+    return normalize_morning_config({**DEFAULT_MORNING_CONFIG, **config})
+
+
+async def _run_morning_refresh() -> None:
+    global _morning_refresh_running
+    async with _morning_refresh_lock:
+        _morning_refresh_running = True
+        try:
+            config = _load_morning_config()
+            await collect_morning_brief(config, DATA_DIR)
+            log.info("Morning brief refreshed")
+        except Exception:
+            log.exception("Morning brief refresh failed")
+        finally:
+            _morning_refresh_running = False
 
 
 @router.get("/api/morning-brief")
 async def morning_brief():
+    brief = _read_json(MORNING_BRIEF_PATH, None)
+    if isinstance(brief, dict):
+        brief.setdefault("categories", {})
+        brief.setdefault("enabled", True)
+        brief.setdefault("message", "天下要闻已采集。")
+        return brief
     return {
         "date": "",
         "generated_at": "",
         "categories": {},
-        "enabled": False,
-        "message": "天下要闻采集后端暂未启用。",
+        "enabled": True,
+        "message": "暂无天下要闻数据，请点击立即采集。",
     }
 
 
 @router.get("/api/morning-config")
 async def morning_config():
-    config = _read_json(MORNING_CONFIG_PATH, DEFAULT_MORNING_CONFIG)
-    if not isinstance(config, dict):
-        return DEFAULT_MORNING_CONFIG
-    return {**DEFAULT_MORNING_CONFIG, **config}
+    return _load_morning_config()
 
 
 @router.post("/api/morning-config")
 async def save_morning_config(body: MorningConfigBody):
-    payload = body.model_dump()
-    payload["enabled"] = False
-    payload["message"] = "订阅配置已保存；天下要闻采集后端暂未启用。"
+    payload = normalize_morning_config(body.model_dump())
     payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+    payload["message"] = "订阅配置已保存。"
     _write_json(MORNING_CONFIG_PATH, payload)
     return {"ok": True, "message": payload["message"]}
 
 
 @router.post("/api/morning-brief/refresh")
-async def refresh_morning():
-    return {"ok": False, "error": "天下要闻采集后端暂未启用，无法触发采集。"}
+async def refresh_morning(background_tasks: BackgroundTasks):
+    if _morning_refresh_running or _morning_refresh_lock.locked():
+        return {"ok": True, "message": "采集中，请稍候…"}
+    background_tasks.add_task(_run_morning_refresh)
+    return {"ok": True, "message": "采集已触发，自动检测更新中…"}
+
 
 @router.get("/api/remote-skills-list")
 async def remote_skills_list():

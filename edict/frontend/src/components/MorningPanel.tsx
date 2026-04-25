@@ -51,7 +51,7 @@ export default function MorningPanel() {
     try {
       const r = await api.refreshMorning();
       if (!r.ok) {
-        toast(r.error || '天下要闻采集后端暂未启用', 'err');
+        toast(r.error || '天下要闻采集失败', 'err');
         setRefreshing(false);
         setRefreshLabel('⟳ 立即采集');
         return;
@@ -207,7 +207,7 @@ export default function MorningPanel() {
       {/* News */}
       {!Object.keys(cats).length ? (
         <div className="mb-empty">
-          {morningBrief?.message || '暂无数据；天下要闻采集后端暂未启用，当前仅支持保存订阅配置'}
+          {morningBrief?.message || '暂无数据，请点击「立即采集」获取天下要闻'}
         </div>
       ) : (
         <div className="mb-cats">
