@@ -5,6 +5,14 @@
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
+export function getWebSocketUrl(): string {
+  const configured = import.meta.env.VITE_WS_URL;
+  if (configured) return configured;
+  if (API_BASE.startsWith('http')) return API_BASE.replace(/^http/, 'ws') + '/ws';
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}/ws`;
+}
+
 // ── 通用请求 ──
 
 async function fetchJ<T>(url: string): Promise<T> {
@@ -287,6 +295,8 @@ export interface MorningBrief {
   date?: string;
   generated_at?: string;
   categories: Record<string, MorningNewsItem[]>;
+  enabled?: boolean;
+  message?: string;
 }
 
 export interface SubCategoryConfig {
@@ -306,6 +316,9 @@ export interface SubConfig {
   custom_feeds: CustomFeed[];
   wecom_webhook?: string;
   feishu_webhook?: string;
+  enabled?: boolean;
+  message?: string;
+  updated_at?: string;
 }
 
 export interface ActivityEntry {

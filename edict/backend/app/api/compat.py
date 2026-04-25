@@ -21,7 +21,7 @@ from ..adapters import create_adapter
 from ..config import get_settings
 from ..db import get_db
 from ..models.task import TaskState
-from ..services.event_bus import EventBus, get_event_bus
+from ..services.event_bus import EventBus, get_event_bus, TOPIC_TASK_DISPATCH
 from ..services.task_service import TaskService
 
 log = logging.getLogger("edict.api.compat")
@@ -57,25 +57,64 @@ AGENT_META_MAP: dict[str, dict] = {
 
 # ── Helpers ──
 
-# 容器内路径: /app/app/api/compat.py → /app/agents, /app/data
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]  # /app
+def _resolve_project_root() -> Path:
+    here = Path(__file__).resolve()
+    candidates = [Path.cwd(), *here.parents]
+    for candidate in candidates:
+        if (candidate / "agents").exists() or (candidate / "data").exists():
+            return candidate
+    return Path.cwd()
+
+
+# 路径兼容本地源码布局与容器内 /app/app/api 布局
+_PROJECT_ROOT = _resolve_project_root()
 AGENTS_DIR = _PROJECT_ROOT / "agents"
 DATA_DIR = _PROJECT_ROOT / "data"
+AGENT_CONFIG_PATH = DATA_DIR / "agent_config.json"
+MORNING_CONFIG_PATH = DATA_DIR / "morning_config.json"
+MODEL_CHANGE_LOG_LIMIT = 100
+
+DEFAULT_KNOWN_MODELS = [
+    {"id": "default", "label": "Default", "provider": "system"},
+    {"id": "anthropic/claude-sonnet-4-6", "label": "Claude Sonnet 4.6", "provider": "Anthropic"},
+    {"id": "anthropic/claude-opus-4-7", "label": "Claude Opus 4.7", "provider": "Anthropic"},
+    {"id": "openai/gpt-4o", "label": "GPT-4o", "provider": "OpenAI"},
+    {"id": "openai/gpt-4o-mini", "label": "GPT-4o Mini", "provider": "OpenAI"},
+]
+
+DEFAULT_MORNING_CONFIG = {
+    "categories": [],
+    "keywords": [],
+    "custom_feeds": [],
+    "wecom_webhook": "",
+    "feishu_webhook": "",
+    "enabled": False,
+    "message": "天下要闻采集后端暂未启用；当前仅保存订阅配置。",
+}
 
 
 def _get_svc(db: AsyncSession = Depends(get_db)) -> TaskService:
     return TaskService(db, None)
 
 
+def _read_json(path: Path, default: Any) -> Any:
+    if path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            log.warning("Failed to read JSON config from %s", path)
+    return default
+
+
+def _write_json(path: Path, data: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def _load_agent_config_json() -> dict:
     """加载 data/agent_config.json（若存在）。"""
-    p = DATA_DIR / "agent_config.json"
-    if p.exists():
-        try:
-            return json.loads(p.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, IOError):
-            pass
-    return {}
+    data = _read_json(AGENT_CONFIG_PATH, {})
+    return data if isinstance(data, dict) else {}
 
 
 def _list_skills_for_agent(agent_id: str) -> list[dict]:
@@ -126,12 +165,11 @@ async def agent_config():
             "skills": _list_skills_for_agent(agent_id),
         })
 
+    dispatch_channel = saved_configs.get("_dispatch_channel") or get_settings().default_dispatch_channel
     return {
         "agents": agents,
-        "knownModels": [
-            {"id": "default", "label": "Default", "provider": "system"},
-        ],
-        "dispatchChannel": "wecom",
+        "knownModels": saved_configs.get("_known_models") or DEFAULT_KNOWN_MODELS,
+        "dispatchChannel": dispatch_channel,
     }
 
 
@@ -503,13 +541,43 @@ async def skill_content(agent_id: str, skill_name: str):
 
 # ── Stub endpoints (Priority 2 - 返回 {ok: true} 让前端不报错) ──
 
+class SetModelBody(BaseModel):
+    agentId: str
+    model: str
+
+
+class DispatchChannelBody(BaseModel):
+    channel: str
+
+
 @router.post("/api/set-model")
-async def set_model():
-    return {"ok": True, "message": "Model change recorded (stub)"}
+async def set_model(body: SetModelBody):
+    saved_configs = _load_agent_config_json()
+    agent_config = saved_configs.setdefault(body.agentId, {})
+    old_model = agent_config.get("model", "default")
+    agent_config["model"] = body.model
+    agent_config["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    change_log = saved_configs.setdefault("_model_change_log", [])
+    change_log.append({
+        "at": agent_config["updated_at"],
+        "agentId": body.agentId,
+        "oldModel": old_model,
+        "newModel": body.model,
+        "effective": "saved_config_only",
+    })
+    saved_configs["_model_change_log"] = change_log[-MODEL_CHANGE_LOG_LIMIT:]
+    _write_json(AGENT_CONFIG_PATH, saved_configs)
+    return {"ok": True, "message": "模型配置已保存；当前运行时不会热切换已派发中的任务。"}
+
 
 @router.post("/api/set-dispatch-channel")
-async def set_dispatch_channel():
-    return {"ok": True}
+async def set_dispatch_channel(body: DispatchChannelBody):
+    saved_configs = _load_agent_config_json()
+    saved_configs["_dispatch_channel"] = body.channel
+    saved_configs["_dispatch_channel_updated_at"] = datetime.now(timezone.utc).isoformat()
+    _write_json(AGENT_CONFIG_PATH, saved_configs)
+    return {"ok": True, "message": "派发渠道配置已保存；实际通知发送取决于对应 channel 是否已配置。"}
 
 class AgentWakeBody(BaseModel):
     agentId: str
@@ -561,7 +629,8 @@ async def scheduler_rollback():
 
 @router.get("/api/model-change-log")
 async def model_change_log():
-    return []
+    saved_configs = _load_agent_config_json()
+    return saved_configs.get("_model_change_log", [])
 
 @router.get("/api/officials-stats")
 async def officials_stats(db: AsyncSession = Depends(get_db)):
@@ -652,27 +721,46 @@ async def officials_stats(db: AsyncSession = Depends(get_db)):
         "top_official": top_official,
     }
 
+class MorningConfigBody(BaseModel):
+    categories: list[dict] = []
+    keywords: list[str] = []
+    custom_feeds: list[dict] = []
+    wecom_webhook: str = ""
+    feishu_webhook: str = ""
+
+
 @router.get("/api/morning-brief")
 async def morning_brief():
-    return {"date": "", "generated_at": "", "categories": {}}
+    return {
+        "date": "",
+        "generated_at": "",
+        "categories": {},
+        "enabled": False,
+        "message": "天下要闻采集后端暂未启用。",
+    }
+
 
 @router.get("/api/morning-config")
 async def morning_config():
-    return {
-        "categories": [],
-        "keywords": [],
-        "custom_feeds": [],
-        "wecom_webhook": "",
-        "feishu_webhook": "",
-    }
+    config = _read_json(MORNING_CONFIG_PATH, DEFAULT_MORNING_CONFIG)
+    if not isinstance(config, dict):
+        return DEFAULT_MORNING_CONFIG
+    return {**DEFAULT_MORNING_CONFIG, **config}
+
 
 @router.post("/api/morning-config")
-async def save_morning_config():
-    return {"ok": True}
+async def save_morning_config(body: MorningConfigBody):
+    payload = body.model_dump()
+    payload["enabled"] = False
+    payload["message"] = "订阅配置已保存；天下要闻采集后端暂未启用。"
+    payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+    _write_json(MORNING_CONFIG_PATH, payload)
+    return {"ok": True, "message": payload["message"]}
+
 
 @router.post("/api/morning-brief/refresh")
 async def refresh_morning():
-    return {"ok": True}
+    return {"ok": False, "error": "天下要闻采集后端暂未启用，无法触发采集。"}
 
 @router.get("/api/remote-skills-list")
 async def remote_skills_list():

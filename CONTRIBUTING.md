@@ -37,7 +37,7 @@ cd edict
 git checkout -b feat/my-awesome-feature
 
 # 4. 开发 & 测试
-python3 dashboard/server.py  # 启动看板验证
+docker compose up -d --build  # 启动 FastAPI 后端和 React 看板验证
 
 # 5. 提交
 git add .
@@ -62,14 +62,12 @@ git push origin feat/my-awesome-feature
 # 安装
 ./install.sh
 
-# 启动数据刷新（后台运行）
-bash scripts/run_loop.sh &
-
-# 启动看板服务器
-python3 dashboard/server.py
+# 启动服务
+cd edict
+docker compose up -d --build
 
 # 打开浏览器
-open http://127.0.0.1:7891
+open http://127.0.0.1:7899
 ```
 
 > 💡 **看板开箱即用**：`server.py` 内嵌 `dashboard/dashboard.html`，Docker 镜像包含预构建 React 前端
@@ -78,13 +76,12 @@ open http://127.0.0.1:7891
 
 | 目录/文件 | 说明 | 改动频率 |
 |----------|------|--------|
-| `dashboard/dashboard.html` | 看板前端（单文件，零依赖，开箱即用） | 🔥 高 |
-| `dashboard/server.py` | API 服务器（stdlib，~2200 行） | 🔥 高 |
-| `agents/*/SOUL.md` | 12 个 Agent 人格模板 | 🔶 中 |
-| `dashboard/court_discuss.py` | 朝堂议政引擎（多官员 LLM 讨论） | 🔶 中 |
-| `scripts/kanban_update.py` | 看板 CLI + 数据清洗 + 状态机校验（~350 行） | 🔶 中 |
-| `scripts/*.py` | 数据同步 / 自动化脚本 | 🔶 中 |
-| `tests/test_e2e_kanban.py` | E2E 看板测试（24 断言） | 🔶 中 |
+| `edict/frontend/src/` | React + TypeScript 看板前端 | 🔥 高 |
+| `edict/backend/app/` | FastAPI 后端、任务 API、worker 依赖服务 | 🔥 高 |
+| `agents/*/SOUL.md` | Agent 人格模板 | 🔶 中 |
+| `scripts/kanban_update_edict.py` | Edict 看板 CLI + API 上报协议 | 🔶 中 |
+| `edict/migration/` | Alembic 数据库迁移 | 🔶 中 |
+| `tests/` | 测试套件 | 🔶 中 |
 | `install.sh` | 安装脚本 | 🟢 低 |
 
 ---
@@ -106,7 +103,7 @@ open http://127.0.0.1:7891
 2. 也可以在 Issue 中自荐，说明你的贡献记录
 3. 所有晋升决定公开透明
 
-> **核心路径**（需 Maintainer review）：`dashboard/server.py`、`agents/`、`edict/backend/`、`scripts/`、`data/`
+> **核心路径**（需 Maintainer review）：`edict/backend/`、`edict/frontend/src/`、`edict/migration/`、`agents/`、`scripts/`、`data/`
 >
 > **开放路径**（Committer 可自主 merge）：`docs/`、`examples/`、`README*.md`、UI 样式调整
 
@@ -176,19 +173,16 @@ docs: 更新 README 截图
 
 ```bash
 # 编译检查
-python3 -m py_compile dashboard/server.py
-python3 -m py_compile scripts/kanban_update.py
+python3 -m py_compile edict/backend/app/main.py
+python3 -m py_compile edict/scripts/kanban_update_edict.py
 
-# E2E 看板测试（9 场景 17 断言）
-python3 tests/test_e2e_kanban.py
+# 前端类型/构建检查
+cd edict/frontend && npm run build
 
-# 验证数据同步
-python3 scripts/refresh_live_data.py
-python3 scripts/sync_agent_config.py
-
-# 启动服务器验证 API
-python3 dashboard/server.py &
-curl -s http://localhost:7891/api/live-status | python3 -m json.tool | head -20
+# 启动服务验证 API
+cd ../..
+cd edict && docker compose up -d --build
+curl -s http://localhost:7898/api/live-status | python3 -m json.tool | head -20
 ```
 
 ---

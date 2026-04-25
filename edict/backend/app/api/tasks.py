@@ -223,6 +223,19 @@ async def add_progress(
         raise HTTPException(status_code=404, detail=str(e))
 
 
+@router.get("/{task_id}/todos")
+async def get_todos(
+    task_id: uuid.UUID,
+    svc: TaskService = Depends(get_task_service),
+):
+    """获取任务 TODO 清单。"""
+    try:
+        task = await svc.get_task(task_id)
+        return {"todos": task.todos or []}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 @router.put("/{task_id}/todos")
 async def update_todos(
     task_id: uuid.UUID,

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useStore, TAB_DEFS, startPolling, stopPolling, isEdict, isArchived } from './store';
+import { useStore, TAB_DEFS, startPolling, stopPolling, startRealtime, stopRealtime, isEdict, isArchived } from './store';
 import EdictBoard from './components/EdictBoard';
 import MonitorPanel from './components/MonitorPanel';
 import OfficialPanel from './components/OfficialPanel';
@@ -24,7 +24,11 @@ export default function App() {
 
   useEffect(() => {
     startPolling();
-    return () => stopPolling();
+    startRealtime();
+    return () => {
+      stopRealtime();
+      stopPolling();
+    };
   }, []);
 
   // Compute header chips

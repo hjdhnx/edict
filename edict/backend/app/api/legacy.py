@@ -114,6 +114,17 @@ async def legacy_progress(
     return {"message": "ok"}
 
 
+@router.get("/by-legacy/{legacy_id}/todos")
+async def legacy_get_todos(
+    legacy_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    task = await _find_by_legacy_id(db, legacy_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Legacy task not found: {legacy_id}")
+    return {"todos": task.todos or []}
+
+
 @router.put("/by-legacy/{legacy_id}/todos")
 async def legacy_todos(
     legacy_id: str,

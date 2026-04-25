@@ -1,11 +1,12 @@
 /**
  * Zustand Store — 三省六部看板状态管理
- * HTTP 5s 轮询，无 WebSocket
+ * WebSocket 事件触发刷新，HTTP 轮询兜底
  */
 
 import { create } from 'zustand';
 import {
   api,
+  getWebSocketUrl,
   type Task,
   type LiveStatus,
   type AgentConfig,
@@ -147,7 +148,7 @@ export const TEMPLATES: Template[] = [
     params: [
       { key: 'date_range', label: '报告周期', type: 'text', default: '本周', required: true },
       { key: 'focus', label: '重点关注（逗号分隔）', type: 'text', default: '项目进展,下周计划' },
-      { key: 'format', label: '输出格式', type: 'select', options: ['Markdown', '飞书文档'], default: 'Markdown' },
+      { key: 'format', label: '输出格式', type: 'select', options: ['Markdown', '纯文本'], default: 'Markdown' },
     ],
     command: '生成{date_range}的周报，重点覆盖{focus}，输出为{format}格式',
   },
@@ -407,6 +408,77 @@ export const useStore = create<AppStore>((set, get) => ({
 // ── Countdown & Polling ──
 
 let _cdTimer: ReturnType<typeof setInterval> | null = null;
+let _ws: WebSocket | null = null;
+let _wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let _wsRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+let _wsStopped = false;
+
+function scheduleRealtimeRefresh() {
+  if (_wsRefreshTimer) return;
+  _wsRefreshTimer = setTimeout(() => {
+    _wsRefreshTimer = null;
+    useStore.getState().loadAll();
+  }, 250);
+}
+
+export function startRealtime() {
+  _wsStopped = false;
+  if (_ws || _wsReconnectTimer) return;
+
+  try {
+    _ws = new WebSocket(getWebSocketUrl());
+  } catch {
+    startPolling();
+    return;
+  }
+
+  _ws.onopen = () => {
+    _ws?.send(JSON.stringify({ type: 'subscribe', topics: ['task.*'] }));
+  };
+
+  _ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      const topic = String(msg.topic || '');
+      if (msg.type === 'event' && (topic.startsWith('task.') || topic.startsWith('agent.'))) {
+        useStore.getState().setCountdown(5);
+        scheduleRealtimeRefresh();
+      }
+    } catch {
+      // ignore malformed websocket frames
+    }
+  };
+
+  _ws.onclose = () => {
+    _ws = null;
+    if (!_wsStopped && !_wsReconnectTimer) {
+      _wsReconnectTimer = setTimeout(() => {
+        _wsReconnectTimer = null;
+        startRealtime();
+      }, 5000);
+    }
+  };
+
+  _ws.onerror = () => {
+    _ws?.close();
+  };
+}
+
+export function stopRealtime() {
+  _wsStopped = true;
+  if (_wsReconnectTimer) {
+    clearTimeout(_wsReconnectTimer);
+    _wsReconnectTimer = null;
+  }
+  if (_wsRefreshTimer) {
+    clearTimeout(_wsRefreshTimer);
+    _wsRefreshTimer = null;
+  }
+  if (_ws) {
+    _ws.close();
+    _ws = null;
+  }
+}
 
 export function startPolling() {
   if (_cdTimer) return;

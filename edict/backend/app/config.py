@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     port: int = 8000
     secret_key: str = "change-me-in-production"
     debug: bool = False
+    cors_origins: str = "http://localhost:7899"
 
     # ── Agent Runtime ──
     dispatch_backend: str = "openclaw"  # "openclaw" | "astrbot"

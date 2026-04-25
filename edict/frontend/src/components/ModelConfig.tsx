@@ -77,9 +77,10 @@ export default function ModelConfig() {
     try {
       const r = await api.setModel(agentId, model);
       if (r.ok) {
-        setStatusMap((p) => ({ ...p, [agentId]: { cls: 'ok', text: '✅ 已提交，Agent 运行时重启中（约5秒）' } }));
-        toast(agentId + ' 模型已更改', 'ok');
-        setTimeout(() => loadAgentConfig(), 5500);
+        const message = r.message || '模型配置已保存；新派发任务会读取该配置';
+        setStatusMap((p) => ({ ...p, [agentId]: { cls: 'ok', text: '✅ ' + message } }));
+        toast(message, 'ok');
+        loadAgentConfig();
       } else {
         setStatusMap((p) => ({ ...p, [agentId]: { cls: 'err', text: '❌ ' + (r.error || '错误') } }));
       }
@@ -145,14 +146,19 @@ export default function ModelConfig() {
             onClick={async () => {
               try {
                 const r = await api.setDispatchChannel(channelSel);
-                if (r.ok) { setChannelStatus('✅ 已保存'); toast('派发渠道已切换', 'ok'); loadAgentConfig(); }
+                if (r.ok) {
+                  const message = r.message || '派发渠道配置已保存';
+                  setChannelStatus('✅ ' + message);
+                  toast(message, 'ok');
+                  loadAgentConfig();
+                }
                 else setChannelStatus('❌ ' + (r.error || '失败'));
               } catch { setChannelStatus('❌ 无法连接'); }
               setTimeout(() => setChannelStatus(''), 3000);
             }}>应用</button>
           {channelStatus && <span style={{ fontSize: 12, color: channelStatus.startsWith('✅') ? 'var(--success)' : 'var(--danger)' }}>{channelStatus}</span>}
         </div>
-        <div style={{ fontSize: 11, color: 'var(--muted)' }}>自动派发时使用的通知渠道（需在配置中已启用对应 channel）</div>
+        <div style={{ fontSize: 11, color: 'var(--muted)' }}>保存的是 Edict 侧配置；实际通知发送取决于对应 channel 是否已配置。</div>
       </div>
 
       {/* Change Log */}

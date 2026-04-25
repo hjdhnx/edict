@@ -49,8 +49,14 @@ export default function MorningPanel() {
     } catch { /* */ }
 
     try {
-      await api.refreshMorning();
-      toast('采集已触发，自动检测更新中…', 'ok');
+      const r = await api.refreshMorning();
+      if (!r.ok) {
+        toast(r.error || '天下要闻采集后端暂未启用', 'err');
+        setRefreshing(false);
+        setRefreshLabel('⟳ 立即采集');
+        return;
+      }
+      toast(r.message || '采集已触发，自动检测更新中…', 'ok');
       let count = 0;
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = setInterval(async () => {
@@ -130,7 +136,8 @@ export default function MorningPanel() {
     try {
       const r = await api.saveMorningConfig(localConfig);
       if (r.ok) {
-        toast('订阅配置已保存', 'ok');
+        const message = r.message || '订阅配置已保存';
+        toast(message, 'ok');
         loadSubConfig();
       } else {
         toast(r.error || '保存失败', 'err');
@@ -199,7 +206,9 @@ export default function MorningPanel() {
 
       {/* News */}
       {!Object.keys(cats).length ? (
-        <div className="mb-empty">暂无数据，点击右上角「立即采集」获取今日简报</div>
+        <div className="mb-empty">
+          {morningBrief?.message || '暂无数据；天下要闻采集后端暂未启用，当前仅支持保存订阅配置'}
+        </div>
       ) : (
         <div className="mb-cats">
           {Object.entries(cats).map(([cat, items]) => {

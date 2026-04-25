@@ -15,6 +15,16 @@ log = logging.getLogger("edict.api.admin")
 router = APIRouter()
 
 
+def _mask_url(value: str) -> str:
+    if not value:
+        return ""
+    if "://" in value and "@" in value:
+        scheme, rest = value.split("://", 1)
+        host = rest.split("@", 1)[-1]
+        return f"{scheme}://***@{host}"
+    return value
+
+
 @router.get("/health/deep")
 async def deep_health(db: AsyncSession = Depends(get_db)):
     """深度健康检查：Postgres + Redis 连通性。"""
@@ -84,7 +94,7 @@ async def get_config():
     return {
         "port": settings.port,
         "debug": settings.debug,
-        "database": settings.database_url.split("@")[-1] if "@" in settings.database_url else "***",
-        "redis": settings.redis_url.split("@")[-1] if "@" in settings.redis_url else settings.redis_url,
+        "database": _mask_url(settings.database_url),
+        "redis": _mask_url(settings.redis_url),
         "scheduler_scan_interval": settings.scheduler_scan_interval_seconds,
     }

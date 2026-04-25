@@ -163,6 +163,31 @@ def _api_post(path: str, data: dict) -> dict | None:
         return None
 
 
+def _api_get(path: str) -> dict | None:
+    """向 Edict API 发送 GET 请求。"""
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            f"{EDICT_API_URL}{path}",
+            method='GET',
+            headers={'Accept': 'application/json'},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        detail = ''
+        try:
+            detail = json.loads(e.read()).get('detail', '')
+        except Exception:
+            pass
+        log.warning(f'API 调用失败 ({path}): HTTP {e.code} {detail or e.reason}')
+        print(f'[看板] API 错误: HTTP {e.code} — {detail}', flush=True)
+        return None
+    except Exception as e:
+        log.warning(f'API 调用失败 ({path}): {e}')
+        return None
+
+
 def _api_put(path: str, data: dict) -> dict | None:
     """向 Edict API 发送 PUT 请求。"""
     try:
@@ -290,6 +315,7 @@ def cmd_create(task_id, title, state, org, official, remark=None):
         legacy.cmd_create(task_id, title, state, org, official, remark)
     else:
         log.error(f'无法创建任务：API 不可用且无降级模块')
+        sys.exit(1)
 
 
 def cmd_state(task_id, new_state, now_text=None):
@@ -311,6 +337,7 @@ def cmd_state(task_id, new_state, now_text=None):
         legacy.cmd_state(task_id, new_state, now_text)
     else:
         log.error(f'无法更新状态：API 不可用且无降级模块')
+        sys.exit(1)
 
 
 def cmd_flow(task_id, from_dept, to_dept, remark):
@@ -332,6 +359,10 @@ def cmd_flow(task_id, from_dept, to_dept, remark):
 
 
 def cmd_done(task_id, output_path='', summary=''):
+    if not (summary or output_path or '').strip():
+        print('[看板] 完成失败：done 命令必须提供产出摘要或产物路径', flush=True)
+        sys.exit(2)
+
     if _check_api():
         agent = _infer_agent_id()
         base = _task_api_base(task_id)
@@ -349,6 +380,9 @@ def cmd_done(task_id, output_path='', summary=''):
     legacy = _fallback_json()
     if legacy:
         legacy.cmd_done(task_id, output_path, summary)
+    else:
+        log.error(f'无法完成任务：API 不可用且无降级模块')
+        sys.exit(1)
 
 
 def cmd_block(task_id, reason):
@@ -367,6 +401,9 @@ def cmd_block(task_id, reason):
     legacy = _fallback_json()
     if legacy:
         legacy.cmd_block(task_id, reason)
+    else:
+        log.error(f'无法阻塞任务：API 不可用且无降级模块')
+        sys.exit(1)
 
 
 def cmd_progress(task_id, now_text, todos_pipe='', tokens=0, cost=0.0, elapsed=0):
@@ -419,16 +456,36 @@ def cmd_todo(task_id, todo_id, title, status='not-started', detail=''):
         status = 'not-started'
 
     if _check_api():
-        # 读取现有 todos，更新后写回
-        # 这里简化处理，直接发进度更新
         agent = _infer_agent_id()
         base = _task_api_base(task_id)
-        _api_post(f'{base}/progress', {
-            'agent': agent,
-            'content': f'Todo #{todo_id}: {title} → {status}',
-        })
-        log.info(f'✅ {task_id} todo: {todo_id} → {status}')
-        return
+        current = _api_get(f'{base}/todos') or {}
+        todos = current.get('todos') or []
+        todo_key = str(todo_id)
+        updated = False
+        next_item = {
+            'id': todo_key,
+            'title': title,
+            'status': status,
+        }
+        if detail:
+            next_item['detail'] = detail
+        for i, item in enumerate(todos):
+            if str(item.get('id')) == todo_key:
+                merged = dict(item)
+                merged.update(next_item)
+                todos[i] = merged
+                updated = True
+                break
+        if not updated:
+            todos.append(next_item)
+        result = _api_put(f'{base}/todos', {'todos': todos})
+        if result:
+            _api_post(f'{base}/progress', {
+                'agent': agent,
+                'content': f'Todo #{todo_id}: {title} → {status}',
+            })
+            log.info(f'✅ {task_id} todo: {todo_id} → {status}')
+            return
 
     legacy = _fallback_json()
     if legacy:

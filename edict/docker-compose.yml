@@ -10,7 +10,7 @@ services:
     environment:
       POSTGRES_DB: edict
       POSTGRES_USER: edict
-      POSTGRES_PASSWORD: edict_dev_2024
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-edict_dev_change_me}
     # ports 不对外暴露，仅 Docker 内部网络通信
     volumes:
       - pg_data:/var/lib/postgresql/data
@@ -43,16 +43,17 @@ services:
     ports:
       - "7898:8000"
     environment:
-      DATABASE_URL: postgresql+asyncpg://edict:edict_dev_2024@postgres:5432/edict
+      DATABASE_URL: postgresql+asyncpg://edict:${POSTGRES_PASSWORD:-edict_dev_change_me}@postgres:5432/edict
       REDIS_URL: redis://redis:6379/0
       PORT: 8000
-      DEBUG: "true"
-      DISPATCH_BACKEND: astrbot
-      ASTRBOT_API_URL: http://host.docker.internal:6185
-      ASTRBOT_API_KEY: abk_au7qsyePnrJ0qkHKtDQWdigrnSvo7tgzyJPVJBP_v1M
-      ASTRBOT_TIMEOUT_SEC: "300"
-      ASTRBOT_CONFIG_ID: ""
-      ASTRBOT_CONFIG_NAME: ""
+      DEBUG: ${DEBUG:-false}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:7899}
+      DISPATCH_BACKEND: ${DISPATCH_BACKEND:-astrbot}
+      ASTRBOT_API_URL: ${ASTRBOT_API_URL:-http://host.docker.internal:6185}
+      ASTRBOT_API_KEY: ${ASTRBOT_API_KEY:-}
+      ASTRBOT_TIMEOUT_SEC: ${ASTRBOT_TIMEOUT_SEC:-300}
+      ASTRBOT_CONFIG_ID: ${ASTRBOT_CONFIG_ID:-}
+      ASTRBOT_CONFIG_NAME: ${ASTRBOT_CONFIG_NAME:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -75,7 +76,7 @@ services:
       context: ..
       dockerfile: edict/Dockerfile
     environment:
-      DATABASE_URL: postgresql+asyncpg://edict:edict_dev_2024@postgres:5432/edict
+      DATABASE_URL: postgresql+asyncpg://edict:${POSTGRES_PASSWORD:-edict_dev_change_me}@postgres:5432/edict
       REDIS_URL: redis://redis:6379/0
     depends_on:
       postgres:
@@ -90,7 +91,7 @@ services:
       context: ..
       dockerfile: edict/Dockerfile
     environment:
-      DATABASE_URL: postgresql+asyncpg://edict:edict_dev_2024@postgres:5432/edict
+      DATABASE_URL: postgresql+asyncpg://edict:${POSTGRES_PASSWORD:-edict_dev_change_me}@postgres:5432/edict
       REDIS_URL: redis://redis:6379/0
     depends_on:
       postgres:
@@ -105,15 +106,15 @@ services:
       context: ..
       dockerfile: edict/Dockerfile
     environment:
-      DATABASE_URL: postgresql+asyncpg://edict:edict_dev_2024@postgres:5432/edict
+      DATABASE_URL: postgresql+asyncpg://edict:${POSTGRES_PASSWORD:-edict_dev_change_me}@postgres:5432/edict
       REDIS_URL: redis://redis:6379/0
       OPENCLAW_PROJECT_DIR: /app
-      DISPATCH_BACKEND: astrbot
-      ASTRBOT_API_URL: http://host.docker.internal:6185
-      ASTRBOT_API_KEY: abk_au7qsyePnrJ0qkHKtDQWdigrnSvo7tgzyJPVJBP_v1M
-      ASTRBOT_TIMEOUT_SEC: "300"
-      ASTRBOT_CONFIG_ID: ""
-      ASTRBOT_CONFIG_NAME: ""
+      DISPATCH_BACKEND: ${DISPATCH_BACKEND:-astrbot}
+      ASTRBOT_API_URL: ${ASTRBOT_API_URL:-http://host.docker.internal:6185}
+      ASTRBOT_API_KEY: ${ASTRBOT_API_KEY:-}
+      ASTRBOT_TIMEOUT_SEC: ${ASTRBOT_TIMEOUT_SEC:-300}
+      ASTRBOT_CONFIG_ID: ${ASTRBOT_CONFIG_ID:-}
+      ASTRBOT_CONFIG_NAME: ${ASTRBOT_CONFIG_NAME:-}
     depends_on:
       postgres:
         condition: service_healthy

@@ -57,19 +57,16 @@ openclaw channels add --type feishu --agent taizi
 ## 第四步：启动服务
 
 ```bash
-# 终端 1：数据刷新循环（每 15 秒同步）
-bash scripts/run_loop.sh
-
-# 终端 2：看板服务器
-python3 dashboard/server.py
+cd edict
+cp .env.example .env
+# 按需填写 .env 中的 ASTRBOT_API_URL / ASTRBOT_API_KEY 等本地配置
+docker compose up -d --build
 
 # 打开浏览器
-open http://127.0.0.1:7891
+open http://127.0.0.1:7899
 ```
 
-> 💡 **提示**：`run_loop.sh` 每 15 秒自动同步数据。可用 `&` 后台运行。
-
-> 💡 **看板即开即用**：`server.py` 内嵌 `dashboard/dashboard.html`，无需额外构建。Docker 镜像包含预构建的 React 前端。
+> 💡 **看板即开即用**：当前主架构是 Docker Compose 编排的 FastAPI 后端（7898）+ React 前端（7899）。
 
 ## 第五步：发送第一道旨意
 
@@ -85,7 +82,7 @@ open http://127.0.0.1:7891
 
 ## 第六步：观察执行过程
 
-打开看板 http://127.0.0.1:7891
+打开看板 http://127.0.0.1:7899
 
 1. **📋 旨意看板** — 观察任务在各状态之间流转
 2. **🔭 省部调度** — 查看各部门工作分布
@@ -110,7 +107,7 @@ open http://127.0.0.1:7891
 
 > 看板 → ⚙️ 模型配置 → 选择新模型 → 应用更改
 
-约 5 秒后 Gateway 自动重启生效。
+当前会保存 Edict 侧模型偏好；已派发中的任务不会热切换。实际运行时是否读取该偏好，取决于当前 dispatch backend 与 Agent 适配器。
 
 ### 管理技能
 
@@ -122,7 +119,9 @@ open http://127.0.0.1:7891
 
 ### 订阅天下要闻
 
-> 看板 → 📰 天下要闻 → ⚙️ 订阅管理 → 选择分类 / 添加源 / 配飞书推送
+> 看板 → 📰 天下要闻 → ⚙️ 订阅管理 → 选择分类 / 添加源 / 配企业微信 Webhook
+
+当前仅支持保存订阅配置；新闻采集与推送后端暂未启用，点击采集会明确提示未启用。
 
 ---
 
@@ -130,8 +129,9 @@ open http://127.0.0.1:7891
 
 ### 看板显示「服务器未启动」
 ```bash
-# 确认服务器正在运行
-python3 dashboard/server.py
+cd edict
+docker compose ps
+docker compose logs backend --tail=100
 ```
 
 ### Agent 报错 "No API key found for provider"
@@ -183,12 +183,9 @@ openclaw agent status <agent-id>
 openclaw agent restart <agent-id>
 ```
 
-### 模型切换后不生效
-等待约 5 秒让 Gateway 重启完成。仍不生效则：
-```bash
-python3 scripts/apply_model_changes.py
-openclaw gateway restart
-```
+### 模型配置保存后不生效
+
+当前模型配置接口保存的是 Edict 侧偏好，不承诺重启 Gateway 或热切换已派发任务。请检查当前 `DISPATCH_BACKEND` 对应适配器是否读取该配置。
 
 ---
 

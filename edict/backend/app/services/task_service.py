@@ -132,6 +132,22 @@ class TaskService:
 
         old_state = task.state
 
+        if new_state == old_state:
+            if reason:
+                task.now = reason
+                entry = {
+                    "agent": agent,
+                    "content": reason,
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                }
+                if task.progress_log is None:
+                    task.progress_log = []
+                task.progress_log = [*task.progress_log, entry]
+            task.updated_at = datetime.now(timezone.utc)
+            await self.db.commit()
+            log.info(f"Task {task_id} state unchanged: {old_state.value} by {agent}")
+            return task
+
         # 校验合法流转
         allowed = STATE_TRANSITIONS.get(old_state, set())
         if new_state not in allowed:
@@ -139,6 +155,17 @@ class TaskService:
                 f"Invalid transition: {old_state.value} → {new_state.value}. "
                 f"Allowed: {[s.value for s in allowed]}"
             )
+
+        if new_state == TaskState.Done:
+            report_summary = (output or reason or output_path or "").strip()
+            if not report_summary:
+                raise ValueError("Done transition requires a non-empty output summary or report path")
+            unfinished = [
+                todo for todo in (task.todos or [])
+                if str(todo.get("status", "")).lower() not in {"completed", "done"}
+            ]
+            if unfinished:
+                raise ValueError(f"Cannot mark Done with {len(unfinished)} unfinished todo(s)")
 
         task.state = new_state
         task.org = Task.org_for_state(new_state, task.assignee_org)
