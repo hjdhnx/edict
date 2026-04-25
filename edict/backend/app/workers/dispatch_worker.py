@@ -66,21 +66,29 @@ _GROUP_MAP = {
 }
 
 
+def _project_root_candidates() -> list[pathlib.Path]:
+    here = pathlib.Path(__file__).resolve()
+    return [pathlib.Path.cwd(), *here.parents]
+
+
 def _resolve_agents_dir() -> pathlib.Path:
     """定位 agents/ 目录。"""
     settings = get_settings()
     if settings.openclaw_project_dir:
         return pathlib.Path(settings.openclaw_project_dir) / "agents"
-    # 默认: 相对于 edict/backend 上溯到项目根
-    return pathlib.Path(__file__).resolve().parents[4] / "agents"
+    for candidate in _project_root_candidates():
+        agents_dir = candidate / "agents"
+        if agents_dir.exists():
+            return agents_dir
+    return pathlib.Path.cwd() / "agents"
 
 
 def _resolve_data_dir() -> pathlib.Path:
-    agents_dir = _resolve_agents_dir()
-    for candidate in (agents_dir.parent / "data", pathlib.Path.cwd() / "data", pathlib.Path(__file__).resolve().parents[4] / "data"):
-        if candidate.exists():
-            return candidate
-    return agents_dir.parent / "data"
+    for candidate in _project_root_candidates():
+        data_dir = candidate / "data"
+        if data_dir.exists():
+            return data_dir
+    return pathlib.Path.cwd() / "data"
 
 
 def _workspace_skill_dir(agent_id: str) -> pathlib.Path:
