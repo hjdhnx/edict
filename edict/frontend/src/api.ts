@@ -136,6 +136,18 @@ export interface Heartbeat {
   label: string;
 }
 
+export interface TaskReport {
+  summary?: string;
+  path?: string;
+  url?: string;
+  body?: string;
+  exists?: boolean;
+  size?: number;
+  truncated?: boolean;
+  captured_at?: string;
+  agent?: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -146,6 +158,8 @@ export interface Task {
   block: string;
   ac: string;
   output: string;
+  report?: TaskReport | null;
+  meta?: Record<string, unknown>;
   heartbeat: Heartbeat;
   flow_log: FlowEntry[];
   progress_log: { ts?: string; at?: string; agent?: string; content?: string; text?: string }[];
@@ -290,7 +304,8 @@ export interface SubConfig {
   categories: SubCategoryConfig[];
   keywords: string[];
   custom_feeds: CustomFeed[];
-  feishu_webhook: string;
+  wecom_webhook?: string;
+  feishu_webhook?: string;
 }
 
 export interface ActivityEntry {

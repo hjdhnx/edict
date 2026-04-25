@@ -131,7 +131,7 @@ async def agent_config():
         "knownModels": [
             {"id": "default", "label": "Default", "provider": "system"},
         ],
-        "dispatchChannel": "feishu",
+        "dispatchChannel": "wecom",
     }
 
 
@@ -662,6 +662,7 @@ async def morning_config():
         "categories": [],
         "keywords": [],
         "custom_feeds": [],
+        "wecom_webhook": "",
         "feishu_webhook": "",
     }
 

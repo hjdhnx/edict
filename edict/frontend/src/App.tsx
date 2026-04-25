@@ -33,16 +33,18 @@ export default function App() {
   const activeEdicts = edicts.filter((t) => !isArchived(t));
   const sync = liveStatus?.syncStatus;
   const syncOk = sync?.ok;
+  const sessionActiveStates = ['Taizi', 'Zhongshu', 'Menxia', 'Assigned', 'Doing', 'Next', 'Review', 'Blocked'];
+  const sessionActiveEdicts = tasks.filter(
+    (t) => isEdict(t) && !isArchived(t) && sessionActiveStates.includes(t.state),
+  );
+  const monitorActiveEdicts = tasks.filter((t) => isEdict(t) && t.state !== 'Done' && t.state !== 'Next');
 
   // Tab badge counts
   const tabBadge = (key: string): string => {
     if (key === 'edicts') return String(activeEdicts.length);
-    if (key === 'sessions') return String(tasks.filter((t) => !isEdict(t)).length);
+    if (key === 'sessions') return String(sessionActiveEdicts.length);
     if (key === 'memorials') return String(edicts.filter((t) => ['Done', 'Cancelled'].includes(t.state)).length);
-    if (key === 'monitor') {
-      const activeDepts = tasks.filter((t) => isEdict(t) && t.state === 'Doing').length;
-      return activeDepts + '活跃';
-    }
+    if (key === 'monitor') return monitorActiveEdicts.length + '活跃';
     return '';
   };
 

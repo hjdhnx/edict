@@ -190,6 +190,47 @@ def _api_put(path: str, data: dict) -> dict | None:
         return None
 
 
+REPORT_BODY_LIMIT = 50 * 1024
+
+
+def _is_url(value: str) -> bool:
+    return bool(re.match(r'^https?://', value or '', re.IGNORECASE))
+
+
+def _build_output_report(output_path: str, summary: str) -> dict:
+    report = {
+        'output': summary or output_path or '任务已完成',
+        'output_path': output_path or '',
+    }
+    if not output_path:
+        return report
+
+    if _is_url(output_path):
+        report['output_url'] = output_path
+        return report
+
+    try:
+        path = pathlib.Path(output_path).expanduser()
+        if path.exists() and path.is_file():
+            size = path.stat().st_size
+            data = path.read_bytes()[:REPORT_BODY_LIMIT + 1]
+            truncated = len(data) > REPORT_BODY_LIMIT
+            if truncated:
+                data = data[:REPORT_BODY_LIMIT]
+            report.update({
+                'output_exists': True,
+                'output_size': size,
+                'output_truncated': truncated or size > REPORT_BODY_LIMIT,
+                'output_body': data.decode('utf-8', errors='replace'),
+            })
+        else:
+            report['output_exists'] = False
+    except Exception as e:
+        report['output_exists'] = False
+        log.debug(f'读取产出文件失败: {e}')
+    return report
+
+
 # ── 命令 → API 调用 ──
 
 # 缓存 API 可用性
@@ -294,11 +335,13 @@ def cmd_done(task_id, output_path='', summary=''):
     if _check_api():
         agent = _infer_agent_id()
         base = _task_api_base(task_id)
-        result = _api_post(f'{base}/transition', {
-            'new_state': 'done',
+        payload = {
+            'new_state': 'Done',
             'agent': agent,
             'reason': summary or '任务已完成',
-        })
+            **_build_output_report(output_path, summary),
+        }
+        result = _api_post(f'{base}/transition', payload)
         if result:
             log.info(f'✅ {task_id} 已完成')
             return

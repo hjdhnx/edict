@@ -39,6 +39,8 @@ class AstrBotAdapter(AgentAdapter):
         self._base_url = settings.astrbot_api_url.rstrip("/")
         self._api_key = settings.astrbot_api_key
         self._timeout = settings.astrbot_timeout_sec
+        self._config_id = settings.astrbot_config_id.strip()
+        self._config_name = settings.astrbot_config_name.strip()
 
     async def invoke(
         self,
@@ -68,10 +70,15 @@ class AstrBotAdapter(AgentAdapter):
             "message": message,
             "enable_streaming": False,
         }
+        if self._config_id:
+            body["config_id"] = self._config_id
+        elif self._config_name:
+            body["config_name"] = self._config_name
 
+        config_hint = self._config_id or self._config_name or "default"
         log.info(
             f"Calling AstrBot: agent={agent}, session={session_id}, "
-            f"task={task_id}, msg_len={len(message)}"
+            f"task={task_id}, config={config_hint}, msg_len={len(message)}"
         )
 
         try:

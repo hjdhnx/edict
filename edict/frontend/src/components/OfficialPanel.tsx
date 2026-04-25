@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useStore, STATE_LABEL } from '../store';
+import { formatDashboardDateTime } from '../time';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
@@ -141,7 +142,7 @@ function OfficialDetail({
         </div>
         <div style={{ textAlign: 'right' }}>
           <div className={`hb ${hb.status}`} style={{ marginBottom: 4 }}>{hb.label}</div>
-          {o.last_active && <div style={{ fontSize: 10, color: 'var(--muted)' }}>活跃 {o.last_active}</div>}
+          {o.last_active && <div style={{ fontSize: 10, color: 'var(--muted)' }}>活跃 {formatDashboardDateTime(o.last_active)}</div>}
           <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
             {o.sessions} 个会话 · {o.messages} 条消息
           </div>

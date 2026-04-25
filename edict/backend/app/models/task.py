@@ -154,6 +154,9 @@ class Task(Base):
         task_id = str(self.task_id) if self.task_id else ""
         updated_at = self.updated_at.isoformat() if self.updated_at else ""
         legacy_output = self.output or meta.get("output") or meta.get("legacy_output", "")
+        report = meta.get("report") if isinstance(meta.get("report"), dict) else None
+        if report is None and legacy_output:
+            report = {"summary": legacy_output}
 
         return {
             "task_id": task_id,
@@ -180,6 +183,7 @@ class Task(Base):
             "eta": self.eta if self.eta != "-" else updated_at,
             "block": self.block,
             "output": legacy_output,
+            "report": report,
             "archived": self.archived,
             "templateId": self.template_id,
             "templateParams": self.template_params or {},

@@ -2,6 +2,10 @@ function pad2(value: number): string {
   return String(value).padStart(2, '0');
 }
 
+function hasExplicitTimezone(value: string): boolean {
+  return /(?:Z|[+\-]\d{2}:?\d{2})$/i.test(value);
+}
+
 export function parseDashboardTimestamp(value: number | string | undefined | null): Date | null {
   if (value === undefined || value === null || value === '') return null;
 
@@ -18,19 +22,15 @@ export function parseDashboardTimestamp(value: number | string | undefined | nul
     return parseDashboardTimestamp(Number(raw));
   }
 
-  let normalized = raw;
-  if (normalized.includes(' ') && !normalized.includes('T')) {
-    normalized = normalized.replace(' ', 'T');
+  const d = new Date(raw);
+  if (!Number.isNaN(d.getTime())) return d;
+
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(raw) && !hasExplicitTimezone(raw)) {
+    const local = new Date(raw.replace(' ', 'T'));
+    return Number.isNaN(local.getTime()) ? null : local;
   }
 
-  const looksIso = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(normalized);
-  const hasTimezone = /(?:Z|[+\-]\d{2}:\d{2})$/i.test(normalized);
-  if (looksIso && !hasTimezone) {
-    normalized += 'Z';
-  }
-
-  const d = new Date(normalized);
-  return Number.isNaN(d.getTime()) ? null : d;
+  return null;
 }
 
 export function formatDashboardTime(

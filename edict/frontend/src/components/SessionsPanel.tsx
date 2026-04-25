@@ -1,6 +1,7 @@
 import { useStore, isEdict, STATE_LABEL, DEPTS } from '../store';
 import type { Task, TodoItem, ActivityEntry } from '../api';
 import { useState } from 'react';
+import { formatDashboardDateTime } from '../time';
 
 const ACTIVE_STATES = ['Taizi', 'Zhongshu', 'Menxia', 'Assigned', 'Doing', 'Next', 'Review', 'Blocked'];
 
@@ -211,7 +212,7 @@ function TaskDetailModal({ task: t, onClose }: { task: Task; onClose: () => void
               <div style={{ maxHeight: 250, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 10, background: 'var(--panel2)' }}>
                 {plog.slice().reverse().slice(0, 20).map((p, i) => {
                   const txt = (p.content || p.text || '').replace(/\n/g, ' ').trim();
-                  const time = (p.ts || p.at || '').substring(0, 19).replace('T', ' ');
+                  const time = formatDashboardDateTime(p.ts || p.at);
                   const agentEmoji = p.agent ? getAgentEmoji(p.agent) : '';
                   return (
                     <div key={i} style={{ padding: '8px 12px', borderBottom: '1px solid var(--line)', fontSize: 12, lineHeight: 1.5 }}>
@@ -242,7 +243,7 @@ function TaskDetailModal({ task: t, onClose }: { task: Task; onClose: () => void
                       <span style={{ color: 'var(--muted)' }}>→</span>
                       <span style={{ fontWeight: 500 }}>{f.to}</span>
                       <span style={{ color: 'var(--muted)', fontSize: 10, marginLeft: 'auto' }}>
-                        {(f.at || '').substring(11, 19)}
+                        {formatDashboardDateTime(f.at)}
                       </span>
                     </div>
                     <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 2 }}>{f.remark}</div>

@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useStore } from '../store';
 import { api } from '../api';
 import type { SubConfig, MorningNewsItem } from '../api';
+import { formatDashboardDateTime } from '../time';
 
 const CAT_META: Record<string, { icon: string; color: string; desc: string }> = {
   '政治': { icon: '🏛️', color: '#6a9eff', desc: '全球政治动态' },
@@ -158,7 +159,7 @@ export default function MorningPanel() {
           <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>🌅 天下要闻</div>
           <div style={{ fontSize: 12, color: 'var(--muted)' }}>
             {dateStr && `${dateStr} | `}
-            {morningBrief?.generated_at && `采集于 ${morningBrief.generated_at} | `}
+            {morningBrief?.generated_at && `采集于 ${formatDashboardDateTime(morningBrief.generated_at)} | `}
             共 {totalNews} 条要闻
           </div>
         </div>
@@ -192,7 +193,7 @@ export default function MorningPanel() {
           onAddFeed={addFeed}
           onRemoveFeed={removeFeed}
           onSave={saveConfig}
-          onSetWebhook={(v) => setLocalConfig({ ...localConfig, feishu_webhook: v })}
+          onSetWebhook={(v) => setLocalConfig({ ...localConfig, wecom_webhook: v })}
         />
       )}
 
@@ -268,7 +269,7 @@ export default function MorningPanel() {
                             <div className="mb-meta">
                               <span className="mb-source">📡 {item.source || ''}</span>
                               {item.pub_date && (
-                                <span className="mb-time">{item.pub_date.substring(0, 16)}</span>
+                                <span className="mb-time">{formatDashboardDateTime(item.pub_date)}</span>
                               )}
                             </div>
                           </div>
@@ -396,14 +397,14 @@ function SubConfigPanel({
         </div>
       </div>
 
-      {/* Feishu Webhook */}
+      {/* WeCom Webhook */}
       <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>飞书 Webhook</div>
+        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>企业微信 Webhook</div>
         <input
           type="text"
-          value={config.feishu_webhook || ''}
+          value={config.wecom_webhook || config.feishu_webhook || ''}
           onChange={(e) => onSetWebhook(e.target.value)}
-          placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/..."
+          placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..."
           style={{ width: '100%', padding: '8px 10px', background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 6, color: 'var(--text)', fontSize: 12, outline: 'none' }}
         />
       </div>

@@ -34,6 +34,20 @@ class TaskTransition(BaseModel):
     new_state: str
     agent: str = "system"
     reason: str = ""
+    output: str | None = None
+    output_path: str | None = None
+    output_body: str | None = None
+    output_url: str | None = None
+    output_exists: bool | None = None
+    output_size: int | None = None
+    output_truncated: bool | None = None
+
+
+def parse_task_state(value: str) -> TaskState:
+    for state in TaskState:
+        if value == state.value or value.lower() == state.value.lower():
+            return state
+    raise ValueError(value)
 
 
 class TaskProgress(BaseModel):
@@ -157,7 +171,7 @@ async def transition_task(
 ):
     """执行状态流转。"""
     try:
-        new_state = TaskState(body.new_state)
+        new_state = parse_task_state(body.new_state)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid state: {body.new_state}")
 
@@ -167,6 +181,13 @@ async def transition_task(
             new_state=new_state,
             agent=body.agent,
             reason=body.reason,
+            output=body.output,
+            output_path=body.output_path,
+            output_body=body.output_body,
+            output_url=body.output_url,
+            output_exists=body.output_exists,
+            output_size=body.output_size,
+            output_truncated=body.output_truncated,
         )
         return {"task_id": str(task.task_id), "state": task.state.value, "message": "ok"}
     except ValueError as e:

@@ -21,10 +21,13 @@ import pathlib
 import re
 import signal
 import time
+import uuid
 from datetime import datetime, timezone
 
 from ..adapters import create_adapter
 from ..config import get_settings
+from ..db import async_session
+from ..models.task import Task
 from ..services.event_bus import (
     EventBus,
     TOPIC_TASK_DISPATCH,
@@ -169,8 +172,11 @@ def _build_reminder(agent_id: str, payload: dict) -> str:
     if block and block != "无":
         reminders.append(f"⚠️ 存在阻塞: {block}。如已解除，先更新状态再继续。")
 
-    if not reminders:
-        return ""
+    # 防止 Agent 进入 grep/list/读源码循环：任务上下文已经在 dispatch payload 中
+    reminders.append(
+        "派发消息已经包含任务 ID、描述、最近流转和进展；禁止用 list/grep/文件搜索/读取脚本源码来查任务数据。"
+        "kanban_update_edict.py 没有 list 命令，只能用于 state/flow/progress/todo/done。"
+    )
 
     # 所有看板操作必须走看板脚本，严禁自己写代码调 API
     reminders.append(
@@ -313,6 +319,56 @@ def _load_agent_skills(agent_id: str, payload: dict) -> str:
     return ""
 
 
+def _enrich_payload_from_task(payload: dict, task: Task) -> dict:
+    """用数据库中的任务快照补齐 dispatch payload，避免状态事件丢失上下文。"""
+    enriched = dict(payload)
+    task_dict = task.to_dict()
+    for key in (
+        "title",
+        "description",
+        "priority",
+        "assignee_org",
+        "tags",
+        "flow_log",
+        "progress_log",
+        "todos",
+        "scheduler",
+        "org",
+        "official",
+        "now",
+        "block",
+        "output",
+    ):
+        value = enriched.get(key)
+        if value in (None, "", [], {}):
+            enriched[key] = task_dict.get(key)
+    enriched["state"] = enriched.get("state") or task_dict.get("state", "")
+    enriched["trace_id"] = enriched.get("trace_id") or task_dict.get("trace_id", "")
+    return enriched
+
+
+async def _load_task_payload(payload: dict) -> dict:
+    """从数据库补齐任务上下文；查询失败时保留原 payload，不中断派发。"""
+    task_id = payload.get("task_id")
+    if not task_id:
+        return payload
+    try:
+        task_uuid = uuid.UUID(str(task_id))
+    except ValueError:
+        return payload
+
+    try:
+        async with async_session() as session:
+            task = await session.get(Task, task_uuid)
+            if task is None:
+                log.warning(f"Dispatch payload references missing task: {task_id}")
+                return payload
+            return _enrich_payload_from_task(payload, task)
+    except Exception as e:
+        log.warning(f"Failed to enrich dispatch payload for task {task_id}: {e}", exc_info=True)
+        return payload
+
+
 class DispatchWorker:
     """Agent 派发 Worker — 快慢 Agent 分桶并发控制。"""
 
@@ -408,6 +464,10 @@ class DispatchWorker:
         async with sem:
 
             log.info(f"🔄 Dispatching task {task_id} → agent '{agent}' state={state}")
+
+            payload = await _load_task_payload(payload)
+            trace_id = payload.get("trace_id") or trace_id
+            state = payload.get("state", state)
 
             # 组装富上下文
             task_context = _build_task_context(payload)

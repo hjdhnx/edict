@@ -37,6 +37,20 @@ class LegacyTransition(BaseModel):
     new_state: str
     agent: str = "system"
     reason: str = ""
+    output: str | None = None
+    output_path: str | None = None
+    output_body: str | None = None
+    output_url: str | None = None
+    output_exists: bool | None = None
+    output_size: int | None = None
+    output_truncated: bool | None = None
+
+
+def parse_task_state(value: str) -> TaskState:
+    for state in TaskState:
+        if value == state.value or value.lower() == state.value.lower():
+            return state
+    raise ValueError(value)
 
 
 class LegacyProgress(BaseModel):
@@ -61,12 +75,24 @@ async def legacy_transition(
     bus = await get_event_bus()
     svc = TaskService(db, bus)
     try:
-        new_state = TaskState(body.new_state)
+        new_state = parse_task_state(body.new_state)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid state: {body.new_state}")
 
     try:
-        t = await svc.transition_state(task.task_id, new_state, body.agent, body.reason)
+        t = await svc.transition_state(
+            task.task_id,
+            new_state,
+            body.agent,
+            body.reason,
+            output=body.output,
+            output_path=body.output_path,
+            output_body=body.output_body,
+            output_url=body.output_url,
+            output_exists=body.output_exists,
+            output_size=body.output_size,
+            output_truncated=body.output_truncated,
+        )
         return {"task_id": str(t.task_id), "state": t.state.value}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

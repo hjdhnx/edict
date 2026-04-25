@@ -8,7 +8,7 @@ import type {
   SchedulerStateData,
   ActivityEntry,
   TodoItem,
-  PhaseDuration,
+  TaskReport,
 } from '../api';
 
 const AGENT_LABELS: Record<string, string> = {
@@ -25,14 +25,38 @@ const AGENT_LABELS: Record<string, string> = {
   zaochao: '钦天监',
 };
 
-const NEXT_LABELS: Record<string, string> = {
-  Taizi: '中书省起草',
-  Zhongshu: '门下省审议',
-  Menxia: '尚书省派发',
-  Assigned: '开始执行',
-  Doing: '进入审查',
-  Review: '完成',
-};
+function getTaskReport(t: Task): TaskReport | null {
+  if (t.report && (t.report.summary || t.report.path || t.report.url || t.report.body)) return t.report;
+  if (t.output && t.output !== '-') return { summary: t.output };
+  return null;
+}
+
+function ReportSection({ report }: { report: TaskReport | null }) {
+  if (!report) return null;
+  return (
+    <div className="m-section">
+      <div className="m-sec-label">奏折产出</div>
+      {report.summary && <div style={{ fontSize: 12, lineHeight: 1.6, marginBottom: 10 }}>{report.summary}</div>}
+      {(report.path || report.url) && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>产物位置</div>
+          {report.url ? (
+            <a href={report.url} target="_blank" rel="noreferrer" style={{ fontSize: 11, wordBreak: 'break-all' }}>{report.url}</a>
+          ) : (
+            <code style={{ fontSize: 11, wordBreak: 'break-all', userSelect: 'text' }}>{report.path}</code>
+          )}
+        </div>
+      )}
+      {report.body && (
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>正文预览{report.truncated ? '（已截断）' : ''}</div>
+          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 260, overflow: 'auto', background: 'var(--panel2)', border: '1px solid var(--line)', borderRadius: 8, padding: 10, fontSize: 11, lineHeight: 1.55 }}>{report.body}</pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 function fmtStalled(sec: number): string {
   const v = Math.max(0, sec);
@@ -120,6 +144,14 @@ export default function TaskModal() {
   const todoTotal = todos.length;
   const canStop = !['Done', 'Blocked', 'Cancelled'].includes(task.state);
   const canResume = ['Blocked', 'Cancelled'].includes(task.state);
+  const nextLabels: Record<string, string> = {
+    Taizi: '中书省起草',
+    Zhongshu: '门下省审议',
+    Menxia: '尚书省派发',
+    Assigned: '开始执行',
+    Doing: '进入审查',
+    Review: '完成',
+  };
 
   const doTaskAction = async (action: string, reason: string) => {
     try {
@@ -155,7 +187,7 @@ export default function TaskModal() {
   };
 
   const doAdvance = async () => {
-    const next = NEXT_LABELS[task.state] || '下一步';
+    const next = nextLabels[task.state] || '下一步';
     const comment = prompt(`⏩ 手动推进 ${task.id}\n当前: ${task.state} → 下一步: ${next}\n\n请输入说明（可留空）：`);
     if (comment === null) return;
     try {
@@ -331,7 +363,7 @@ export default function TaskModal() {
                 <div className="mr-val"><span className={`tag dt-${(task.org || '').replace(/\s/g, '')}`}>{task.org || '—'}</span></div>
               </div>
               {task.eta && task.eta !== '-' && (
-                <div className="m-row"><div className="mr-label">预计完成</div><div className="mr-val">{task.eta}</div></div>
+                <div className="m-row"><div className="mr-label">预计完成</div><div className="mr-val">{formatDashboardDateTime(task.eta) || task.eta}</div></div>
               )}
               {task.block && task.block !== '无' && task.block !== '-' && (
                 <div className="m-row"><div className="mr-label" style={{ color: 'var(--danger)' }}>阻塞项</div><div className="mr-val" style={{ color: 'var(--danger)' }}>{task.block}</div></div>
@@ -378,12 +410,7 @@ export default function TaskModal() {
           )}
 
           {/* Output */}
-          {task.output && task.output !== '-' && task.output !== '' && (
-            <div className="m-section">
-              <div className="m-sec-label">产出物</div>
-              <code>{task.output}</code>
-            </div>
-          )}
+          <ReportSection report={getTaskReport(task)} />
 
           {/* Live Activity */}
           <LiveActivitySection data={activityData} isDone={['Done', 'Cancelled'].includes(task.state)} logRef={logRef} />

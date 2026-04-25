@@ -1,6 +1,54 @@
 import { useState } from 'react';
 import { useStore, isEdict, STATE_LABEL } from '../store';
-import type { Task, FlowEntry } from '../api';
+import { formatDashboardDateTime } from '../time';
+import type { Task, FlowEntry, TaskReport } from '../api';
+
+function getTaskReport(t: Task): TaskReport | null {
+  if (t.report && (t.report.summary || t.report.path || t.report.url || t.report.body)) return t.report;
+  if (t.output && t.output !== '-') return { summary: t.output };
+  return null;
+}
+
+function appendReportMarkdown(md: string, report: TaskReport | null): string {
+  if (!report) return md;
+  md += `## 奏折产出\n\n`;
+  if (report.summary) md += `### 摘要\n\n${report.summary}\n\n`;
+  if (report.url) md += `### 链接\n\n${report.url}\n\n`;
+  if (report.path) md += `### 文件位置\n\n\`${report.path}\`\n\n`;
+  if (report.body) {
+    md += `### 正文预览\n\n${report.body}\n\n`;
+    if (report.truncated) md += `_正文已截断，仅展示预览。_\n\n`;
+  }
+  return md;
+}
+
+function ReportBlock({ report }: { report: TaskReport | null }) {
+  if (!report) return null;
+  return (
+    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line)' }}>
+      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>奏折产出</div>
+      {report.summary && <div style={{ fontSize: 12, lineHeight: 1.6, marginBottom: 10 }}>{report.summary}</div>}
+      {(report.path || report.url) && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', marginBottom: 4 }}>产物位置</div>
+          {report.url ? (
+            <a href={report.url} target="_blank" rel="noreferrer" style={{ fontSize: 11, wordBreak: 'break-all' }}>{report.url}</a>
+          ) : (
+            <code style={{ fontSize: 11, wordBreak: 'break-all', userSelect: 'text' }}>{report.path}</code>
+          )}
+        </div>
+      )}
+      {report.body && (
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', marginBottom: 4 }}>
+            正文预览{report.truncated ? '（已截断）' : ''}
+          </div>
+          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 260, overflow: 'auto', background: 'var(--panel2)', border: '1px solid var(--line)', borderRadius: 8, padding: 10, fontSize: 11, lineHeight: 1.55 }}>{report.body}</pre>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function MemorialPanel() {
   const liveStatus = useStore((s) => s.liveStatus);
@@ -19,16 +67,16 @@ export default function MemorialPanel() {
     md += `- **状态**: ${t.state}\n`;
     md += `- **负责部门**: ${t.org}\n`;
     if (fl.length) {
-      const startAt = fl[0].at ? fl[0].at.substring(0, 19).replace('T', ' ') : '未知';
-      const endAt = fl[fl.length - 1].at ? fl[fl.length - 1].at.substring(0, 19).replace('T', ' ') : '未知';
+      const startAt = formatDashboardDateTime(fl[0].at) || '未知';
+      const endAt = formatDashboardDateTime(fl[fl.length - 1].at) || '未知';
       md += `- **开始时间**: ${startAt}\n`;
       md += `- **完成时间**: ${endAt}\n`;
     }
     md += `\n## 流转记录\n\n`;
     for (const f of fl) {
-      md += `- **${f.from}** → **${f.to}**  \n  ${f.remark}  \n  _${(f.at || '').substring(0, 19)}_\n\n`;
+      md += `- **${f.from}** → **${f.to}**  \n  ${f.remark}  \n  _${formatDashboardDateTime(f.at) || '未知'}_\n\n`;
     }
-    if (t.output && t.output !== '-') md += `## 产出物\n\n\`${t.output}\`\n`;
+    md = appendReportMarkdown(md, getTaskReport(t));
     navigator.clipboard.writeText(md).then(
       () => toast('✅ 奏折已复制为 Markdown', 'ok'),
       () => toast('复制失败', 'err')
@@ -63,8 +111,8 @@ export default function MemorialPanel() {
           mems.map((t) => {
             const fl = t.flow_log || [];
             const depts = [...new Set(fl.map((f) => f.from).concat(fl.map((f) => f.to)).filter((x) => x && x !== '皇上'))];
-            const firstAt = fl.length ? (fl[0].at || '').substring(0, 16).replace('T', ' ') : '';
-            const lastAt = fl.length ? (fl[fl.length - 1].at || '').substring(0, 16).replace('T', ' ') : '';
+            const firstAt = fl.length ? formatDashboardDateTime(fl[0].at) : '';
+            const lastAt = fl.length ? formatDashboardDateTime(fl[fl.length - 1].at) : '';
             const stIcon = t.state === 'Done' ? '✅' : '🚫';
             return (
               <div className="mem-card" key={t.id} onClick={() => setDetailTask(t)}>
@@ -146,7 +194,7 @@ function MemorialDetailModal({
                   <span className="md-tl-to">→ {f.to}</span>
                 </div>
                 <div className="md-tl-remark">{f.remark}</div>
-                <div className="md-tl-time">{(f.at || '').substring(0, 19).replace('T', ' ')}</div>
+                <div className="md-tl-time">{formatDashboardDateTime(f.at)}</div>
               </div>
             );
           })}
@@ -195,7 +243,7 @@ function MemorialDetailModal({
                     <div className="md-tl-item" key={i}>
                       <div className="md-tl-dot" />
                       <div style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}>{p.content || p.text || ''}</div>
-                      <div className="md-tl-time">{(p.ts || p.at || '').substring(0, 19).replace('T', ' ')}</div>
+                      <div className="md-tl-time">{formatDashboardDateTime(p.ts || p.at)}</div>
                     </div>
                   ))}
                 </div>
@@ -203,12 +251,7 @@ function MemorialDetailModal({
             );
           })()}
 
-          {t.output && t.output !== '-' && (
-            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line)' }}>
-              <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>📦 产出物</div>
-              <code style={{ fontSize: 11, wordBreak: 'break-all' }}>{t.output}</code>
-            </div>
-          )}
+          <ReportBlock report={getTaskReport(t)} />
 
           <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
             <button className="btn btn-g" onClick={() => onExport(t)} style={{ fontSize: 12, padding: '6px 16px' }}>

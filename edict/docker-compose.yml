@@ -51,6 +51,8 @@ services:
       ASTRBOT_API_URL: http://host.docker.internal:6185
       ASTRBOT_API_KEY: abk_au7qsyePnrJ0qkHKtDQWdigrnSvo7tgzyJPVJBP_v1M
       ASTRBOT_TIMEOUT_SEC: "300"
+      ASTRBOT_CONFIG_ID: ""
+      ASTRBOT_CONFIG_NAME: ""
     depends_on:
       postgres:
         condition: service_healthy
@@ -110,6 +112,8 @@ services:
       ASTRBOT_API_URL: http://host.docker.internal:6185
       ASTRBOT_API_KEY: abk_au7qsyePnrJ0qkHKtDQWdigrnSvo7tgzyJPVJBP_v1M
       ASTRBOT_TIMEOUT_SEC: "300"
+      ASTRBOT_CONFIG_ID: ""
+      ASTRBOT_CONFIG_NAME: ""
     depends_on:
       postgres:
         condition: service_healthy

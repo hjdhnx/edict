@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../store';
 import { api } from '../api';
+import { formatDashboardDateTime } from '../time';
 
 const FALLBACK_MODELS = [
   { id: 'anthropic/claude-sonnet-4-6', l: 'Claude Sonnet 4.6', p: 'Anthropic' },
@@ -16,9 +17,8 @@ const FALLBACK_MODELS = [
 ];
 
 const CHANNELS = [
-  { id: 'feishu', label: '飞书 Feishu' },
-  { id: 'telegram', label: 'Telegram' },
   { id: 'wecom', label: '企业微信 WeCom' },
+  { id: 'telegram', label: 'Telegram' },
   { id: 'discord', label: 'Discord' },
   { id: 'slack', label: 'Slack' },
   { id: 'signal', label: 'Signal' },
@@ -33,7 +33,7 @@ export default function ModelConfig() {
 
   const [selMap, setSelMap] = useState<Record<string, string>>({});
   const [statusMap, setStatusMap] = useState<Record<string, { cls: string; text: string }>>({});
-  const [channelSel, setChannelSel] = useState('feishu');
+  const [channelSel, setChannelSel] = useState('wecom');
   const [channelStatus, setChannelStatus] = useState('');
 
   useEffect(() => {
@@ -141,7 +141,7 @@ export default function ModelConfig() {
               <option key={ch.id} value={ch.id}>{ch.label}</option>
             ))}
           </select>
-          <button className="btn btn-p" disabled={channelSel === (agentConfig?.dispatchChannel || 'feishu')}
+          <button className="btn btn-p" disabled={channelSel === (agentConfig?.dispatchChannel || 'wecom')}
             onClick={async () => {
               try {
                 const r = await api.setDispatchChannel(channelSel);
@@ -167,7 +167,7 @@ export default function ModelConfig() {
               .slice(0, 15)
               .map((e, i) => (
                 <div className="cl-row" key={i}>
-                  <span className="cl-t">{(e.at || '').substring(0, 16).replace('T', ' ')}</span>
+                  <span className="cl-t">{formatDashboardDateTime(e.at)}</span>
                   <span className="cl-a">{e.agentId}</span>
                   <span className="cl-c">
                     <b>{e.oldModel}</b> → <b>{e.newModel}</b>

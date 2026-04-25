@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     astrbot_api_url: str = "http://localhost:6185"
     astrbot_api_key: str = ""
     astrbot_timeout_sec: int = 300
+    astrbot_config_id: str = ""
+    astrbot_config_name: str = ""
 
     # ── LLM 直调（朝议等场景用） ──
     llm_api_url: str = ""         # OpenAI-compatible API, e.g. https://api.openai.com/v1/chat/completions
@@ -58,7 +60,7 @@ class Settings(BaseSettings):
 
     # ── 消息通知 ──
     notification_enabled: bool = True
-    default_dispatch_channel: str = "feishu"
+    default_dispatch_channel: str = "wecom"
 
     @property
     def database_url(self) -> str:

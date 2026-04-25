@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useStore, isEdict, isArchived, getPipeStatus, stateLabel, deptColor, PIPE } from '../store';
 import { api, type Task } from '../api';
+import { formatDashboardDateTime } from '../time';
 
 // 排序权重
 const STATE_ORDER: Record<string, number> = {
@@ -129,7 +130,7 @@ function EdictCard({ task }: { task: Task }) {
           </span>
         )}
         {task.eta && task.eta !== '-' && (
-          <span style={{ fontSize: 11, color: 'var(--muted)' }}>📅 {task.eta}</span>
+          <span style={{ fontSize: 11, color: 'var(--muted)' }}>📅 {formatDashboardDateTime(task.eta) || task.eta}</span>
         )}
       </div>
       <div className="ec-actions" onClick={(e) => e.stopPropagation()}>

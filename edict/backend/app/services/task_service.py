@@ -92,9 +92,12 @@ class TaskService:
             payload={
                 "task_id": str(task.task_id),
                 "title": title,
+                "description": description,
                 "state": initial_state.value,
                 "priority": priority,
                 "assignee_org": assignee_org,
+                "org": target_org,
+                "tags": tags or [],
             },
         )
         self.db.add(outbox)
@@ -111,6 +114,13 @@ class TaskService:
         new_state: TaskState,
         agent: str = "system",
         reason: str = "",
+        output: str | None = None,
+        output_path: str | None = None,
+        output_body: str | None = None,
+        output_url: str | None = None,
+        output_exists: bool | None = None,
+        output_size: int | None = None,
+        output_truncated: bool | None = None,
     ) -> Task:
         """执行状态流转。SELECT FOR UPDATE 防止并发 flow_log 丢失。"""
         # 行级排他锁 — 串行化同一任务的并发写入
@@ -136,6 +146,38 @@ class TaskService:
             task.now = reason
         task.updated_at = datetime.now(timezone.utc)
 
+        report_fields = [
+            output,
+            output_path,
+            output_body,
+            output_url,
+            output_exists,
+            output_size,
+            output_truncated,
+        ]
+        if new_state == TaskState.Done or any(v not in (None, "") for v in report_fields):
+            report_summary = output or reason or output_path or ""
+            if report_summary:
+                task.output = report_summary
+            meta = dict(task.meta or {})
+            report = dict(meta.get("report") or {})
+            report.update(
+                {
+                    "summary": report_summary,
+                    "path": output_path or report.get("path", ""),
+                    "url": output_url or report.get("url", ""),
+                    "body": output_body or report.get("body", ""),
+                    "exists": output_exists,
+                    "size": output_size,
+                    "truncated": bool(output_truncated),
+                    "captured_at": datetime.now(timezone.utc).isoformat(),
+                    "agent": agent,
+                }
+            )
+            report = {k: v for k, v in report.items() if v not in (None, "")}
+            meta["report"] = report
+            task.meta = meta
+
         # 在行锁保护下安全追加 flow_log
         flow_entry = {
             "from": old_state.value,
@@ -160,7 +202,12 @@ class TaskService:
                 "from": old_state.value,
                 "to": new_state.value,
                 "reason": reason,
+                "title": task.title,
+                "description": task.description,
+                "priority": task.priority,
                 "assignee_org": task.assignee_org,
+                "org": task.org,
+                "tags": task.tags or [],
             },
         )
         self.db.add(outbox)
@@ -189,6 +236,12 @@ class TaskService:
                 "agent": target_agent,
                 "message": message,
                 "state": task.state.value,
+                "title": task.title,
+                "description": task.description,
+                "priority": task.priority,
+                "assignee_org": task.assignee_org,
+                "org": task.org,
+                "tags": task.tags or [],
             },
         )
         self.db.add(outbox)
