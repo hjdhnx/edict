@@ -1,7 +1,19 @@
 import { useState } from 'react';
 import { useStore, isEdict, STATE_LABEL } from '../store';
-import { formatDashboardDateTime } from '../time';
+import { formatDashboardDateTime, getTaskTiming, pickFlowTimestamp } from '../time';
 import type { Task, FlowEntry, TaskReport } from '../api';
+
+function flowRemark(flow: FlowEntry): string {
+  return flow.remark || flow.reason || '';
+}
+
+function getFlowActor(flow: FlowEntry): string {
+  return flow.from || flow.agent || '系统';
+}
+
+function getFlowDepts(fl: FlowEntry[]): string[] {
+  return [...new Set(fl.flatMap((f) => [getFlowActor(f), f.to]).filter((x): x is string => Boolean(x && x !== '皇上' && x !== '系统')))];
+}
 
 function getTaskReport(t: Task): TaskReport | null {
   if (t.report && (t.report.summary || t.report.path || t.report.url || t.report.body)) return t.report;
@@ -62,19 +74,21 @@ export default function MemorialPanel() {
 
   const exportMemorial = (t: Task) => {
     const fl = t.flow_log || [];
+    const timing = getTaskTiming(t);
     let md = `# 📜 奏折 · ${t.title}\n\n`;
     md += `- **任务编号**: ${t.id}\n`;
     md += `- **状态**: ${t.state}\n`;
     md += `- **负责部门**: ${t.org}\n`;
+    if (timing.durationText) md += `- **耗时**: ${timing.durationText}\n`;
     if (fl.length) {
-      const startAt = formatDashboardDateTime(fl[0].at) || '未知';
-      const endAt = formatDashboardDateTime(fl[fl.length - 1].at) || '未知';
+      const startAt = formatDashboardDateTime(pickFlowTimestamp(fl[0])) || '未知';
+      const endAt = formatDashboardDateTime(pickFlowTimestamp(fl[fl.length - 1])) || '未知';
       md += `- **开始时间**: ${startAt}\n`;
       md += `- **完成时间**: ${endAt}\n`;
     }
     md += `\n## 流转记录\n\n`;
     for (const f of fl) {
-      md += `- **${f.from}** → **${f.to}**  \n  ${f.remark}  \n  _${formatDashboardDateTime(f.at) || '未知'}_\n\n`;
+      md += `- **${getFlowActor(f)}** → **${f.to || '—'}**  \n  ${flowRemark(f)}  \n  _${formatDashboardDateTime(pickFlowTimestamp(f)) || '未知'}_\n\n`;
     }
     md = appendReportMarkdown(md, getTaskReport(t));
     navigator.clipboard.writeText(md).then(
@@ -110,9 +124,10 @@ export default function MemorialPanel() {
         ) : (
           mems.map((t) => {
             const fl = t.flow_log || [];
-            const depts = [...new Set(fl.map((f) => f.from).concat(fl.map((f) => f.to)).filter((x) => x && x !== '皇上'))];
-            const firstAt = fl.length ? formatDashboardDateTime(fl[0].at) : '';
-            const lastAt = fl.length ? formatDashboardDateTime(fl[fl.length - 1].at) : '';
+            const depts = getFlowDepts(fl);
+            const firstAt = fl.length ? formatDashboardDateTime(pickFlowTimestamp(fl[0])) : '';
+            const lastAt = fl.length ? formatDashboardDateTime(pickFlowTimestamp(fl[fl.length - 1])) : '';
+            const timing = getTaskTiming(t);
             const stIcon = t.state === 'Done' ? '✅' : '🚫';
             return (
               <div className="mem-card" key={t.id} onClick={() => setDetailTask(t)}>
@@ -122,7 +137,7 @@ export default function MemorialPanel() {
                     {stIcon} {t.title || t.id}
                   </div>
                   <div className="mem-sub">
-                    {t.id} · {t.org || ''} · 流转 {fl.length} 步
+                    {t.id} · {t.org || ''} · 流转 {fl.length} 步{timing.durationText ? ` · 耗时 ${timing.durationText}` : ''}
                   </div>
                   <div className="mem-tags">
                     {depts.slice(0, 5).map((d) => (
@@ -160,7 +175,8 @@ function MemorialDetailModal({
   const fl = t.flow_log || [];
   const st = t.state || 'Unknown';
   const stIcon = st === 'Done' ? '✅' : st === 'Cancelled' ? '🚫' : '🔄';
-  const depts = [...new Set(fl.map((f) => f.from).concat(fl.map((f) => f.to)).filter((x) => x && x !== '皇上'))];
+  const depts = getFlowDepts(fl);
+  const timing = getTaskTiming(t);
 
   // Reconstruct phases
   const originLog: FlowEntry[] = [];
@@ -169,10 +185,11 @@ function MemorialDetailModal({
   const execLog: FlowEntry[] = [];
   const resultLog: FlowEntry[] = [];
   for (const f of fl) {
-    if (f.from === '皇上') originLog.push(f);
-    else if (f.to === '中书省' || f.from === '中书省') planLog.push(f);
-    else if (f.to === '门下省' || f.from === '门下省') reviewLog.push(f);
-    else if (f.remark && (f.remark.includes('完成') || f.remark.includes('回奏'))) resultLog.push(f);
+    const remark = flowRemark(f);
+    if (getFlowActor(f) === '皇上') originLog.push(f);
+    else if (f.to === '中书省' || getFlowActor(f) === '中书省') planLog.push(f);
+    else if (f.to === '门下省' || getFlowActor(f) === '门下省') reviewLog.push(f);
+    else if (remark && (remark.includes('完成') || remark.includes('回奏'))) resultLog.push(f);
     else execLog.push(f);
   }
 
@@ -185,16 +202,18 @@ function MemorialDetailModal({
         </div>
         <div className="md-timeline">
           {items.map((f, i) => {
-            const dotCls = f.remark?.includes('✅') ? 'green' : f.remark?.includes('驳') ? 'red' : '';
+            const remark = flowRemark(f);
+            const actor = getFlowActor(f);
+            const dotCls = remark.includes('✅') ? 'green' : remark.includes('驳') ? 'red' : '';
             return (
               <div className="md-tl-item" key={i}>
                 <div className={`md-tl-dot ${dotCls}`} />
                 <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
-                  <span className="md-tl-from">{f.from}</span>
-                  <span className="md-tl-to">→ {f.to}</span>
+                  <span className="md-tl-from">{actor}</span>
+                  <span className="md-tl-to">→ {f.to || '—'}</span>
                 </div>
-                <div className="md-tl-remark">{f.remark}</div>
-                <div className="md-tl-time">{formatDashboardDateTime(f.at)}</div>
+                <div className="md-tl-remark">{remark}</div>
+                <div className="md-tl-time">{formatDashboardDateTime(pickFlowTimestamp(f))}</div>
               </div>
             );
           })}
@@ -214,6 +233,7 @@ function MemorialDetailModal({
             <span className={`tag st-${st}`}>{STATE_LABEL[st] || st}</span>
             <span style={{ fontSize: 11, color: 'var(--muted)' }}>{t.org}</span>
             <span style={{ fontSize: 11, color: 'var(--muted)' }}>流转 {fl.length} 步</span>
+            {timing.durationText && <span style={{ fontSize: 11, color: 'var(--muted)' }}>耗时 {timing.durationText}</span>}
             {depts.map((d) => (
               <span className="mem-tag" key={d}>{d}</span>
             ))}

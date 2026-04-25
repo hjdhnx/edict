@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useStore, isEdict, isArchived, getPipeStatus, stateLabel, deptColor, PIPE } from '../store';
 import { api, type Task } from '../api';
-import { formatDashboardDateTime } from '../time';
+import { formatDashboardDateTime, getTaskTiming } from '../time';
 
 // 排序权重
 const STATE_ORDER: Record<string, number> = {
@@ -42,6 +42,7 @@ function EdictCard({ task }: { task: Task }) {
   const canResume = ['Blocked', 'Cancelled'].includes(task.state);
   const archived = isArchived(task);
   const isBlocked = task.block && task.block !== '无' && task.block !== '-';
+  const timing = getTaskTiming(task);
 
   const handleAction = async (action: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -124,6 +125,11 @@ function EdictCard({ task }: { task: Task }) {
       )}
       <div className="ec-footer">
         <span className={`hb ${hb.status}`}>{hb.label}</span>
+        {timing.durationText && (
+          <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+            ⏱ {timing.isTerminal ? '耗时' : '已用时'} {timing.durationText}
+          </span>
+        )}
         {isBlocked && (
           <span className="tag" style={{ borderColor: '#ff527044', color: 'var(--danger)', background: '#200a10' }}>
             🚫 {task.block}
@@ -160,8 +166,10 @@ export default function EdictBoard() {
   const setEdictFilter = useStore((s) => s.setEdictFilter);
   const toast = useStore((s) => s.toast);
   const loadAll = useStore((s) => s.loadAll);
+  const countdown = useStore((s) => s.countdown);
   const [decreeText, setDecreeText] = useState('');
   const [decreeOpen, setDecreeOpen] = useState(false);
+  void countdown;
 
   const tasks = liveStatus?.tasks || [];
   const allEdicts = tasks.filter(isEdict);

@@ -126,10 +126,13 @@ export interface ActionResult {
 }
 
 export interface FlowEntry {
-  at: string;
-  from: string;
-  to: string;
-  remark: string;
+  at?: string;
+  ts?: string;
+  from?: string | null;
+  to?: string;
+  remark?: string;
+  reason?: string;
+  agent?: string;
 }
 
 export interface TodoItem {
@@ -175,7 +178,10 @@ export interface Task {
   review_round: number;
   archived: boolean;
   archivedAt?: string;
+  createdAt?: string;
+  created_at?: string;
   updatedAt?: string;
+  updated_at?: string;
   sourceMeta?: Record<string, unknown>;
   activity?: ActivityEntry[];
   _prev_state?: string;

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useStore, getPipeStatus, deptColor, stateLabel, STATE_LABEL } from '../store';
 import { api } from '../api';
-import { formatDashboardDateTime, formatDashboardTime } from '../time';
+import { formatDashboardDateTime, formatDashboardTime, getTaskTiming, pickFlowTimestamp } from '../time';
 import type {
   Task,
   TaskActivityData,
@@ -71,12 +71,17 @@ function fmtActivityTime(ts: number | string | undefined): string {
   return formatDashboardTime(ts, { showSeconds: true });
 }
 
+function flowRemark(flow: { remark?: string; reason?: string }): string {
+  return flow.remark || flow.reason || '';
+}
+
 export default function TaskModal() {
   const modalTaskId = useStore((s) => s.modalTaskId);
   const setModalTaskId = useStore((s) => s.setModalTaskId);
   const liveStatus = useStore((s) => s.liveStatus);
   const loadAll = useStore((s) => s.loadAll);
   const toast = useStore((s) => s.toast);
+  const countdown = useStore((s) => s.countdown);
 
   const [activityData, setActivityData] = useState<TaskActivityData | null>(null);
   const [schedData, setSchedData] = useState<SchedulerStateData | null>(null);
@@ -84,6 +89,7 @@ export default function TaskModal() {
   const logRef = useRef<HTMLDivElement>(null);
 
   const task = liveStatus?.tasks?.find((t) => t.id === modalTaskId) || null;
+  void countdown;
 
   const fetchActivity = useCallback(async () => {
     if (!modalTaskId) return;
@@ -152,6 +158,7 @@ export default function TaskModal() {
     Doing: '进入审查',
     Review: '完成',
   };
+  const timing = getTaskTiming(task);
 
   const doTaskAction = async (action: string, reason: string) => {
     try {
@@ -269,6 +276,9 @@ export default function TaskModal() {
                 <div className="cs-action">当前阶段：{activeStage.action}</div>
               </div>
               <span className={`hb ${hb.status} cs-hb`}>{hb.label}</span>
+              {timing.durationText && !timing.isTerminal && (
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}>已运行 {timing.durationText}</span>
+              )}
             </div>
           )}
 
@@ -358,6 +368,12 @@ export default function TaskModal() {
                   {(task.review_round || 0) > 0 && <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 8 }}>共磋商 {task.review_round} 轮</span>}
                 </div>
               </div>
+              {timing.durationText && (
+                <div className="m-row">
+                  <div className="mr-label">{timing.isTerminal ? '总耗时' : '已运行'}</div>
+                  <div className="mr-val">{timing.durationText}</div>
+                </div>
+              )}
               <div className="m-row">
                 <div className="mr-label">执行部门</div>
                 <div className="mr-val"><span className={`tag dt-${(task.org || '').replace(/\s/g, '')}`}>{task.org || '—'}</span></div>
@@ -389,18 +405,19 @@ export default function TaskModal() {
               <div className="m-sec-label">流转日志（{flowLog.length} 条）</div>
               <div className="fl-timeline">
                 {flowLog.map((fl, i) => {
-                  const col = deptColor(fl.from || '');
+                  const col = deptColor(fl.from || fl.agent || '');
+                  const remark = flowRemark(fl);
                   return (
                     <div className="fl-item" key={i}>
-                      <div className="fl-time">{formatDashboardTime(fl.at, { showSeconds: false })}</div>
+                      <div className="fl-time">{formatDashboardTime(pickFlowTimestamp(fl), { showSeconds: false })}</div>
                       <div className="fl-dot" style={{ background: col }} />
                       <div className="fl-content">
                         <div className="fl-who">
-                          <span className="from" style={{ color: col }}>{fl.from}</span>
+                          <span className="from" style={{ color: col }}>{fl.from || fl.agent || '系统'}</span>
                           <span style={{ color: 'var(--muted)' }}> → </span>
-                          <span className="to" style={{ color: deptColor(fl.to || '') }}>{fl.to}</span>
+                          <span className="to" style={{ color: deptColor(fl.to || '') }}>{fl.to || '—'}</span>
                         </div>
-                        <div className="fl-rem">{fl.remark}</div>
+                        <div className="fl-rem">{remark}</div>
                       </div>
                     </div>
                   );
