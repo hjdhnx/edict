@@ -17,13 +17,14 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+import httpx
 
 from ..adapters import create_adapter
 from ..config import get_settings
 from ..db import get_db
 from ..models.task import TaskState
 from ..services.event_bus import EventBus, get_event_bus, TOPIC_TASK_DISPATCH
-from ..services.morning_brief import DEFAULT_CATEGORIES, collect_morning_brief, normalize_morning_config
+from ..services.morning_brief import DEFAULT_CATEGORIES, collect_morning_brief, normalize_morning_config, push_morning_brief
 from ..services.task_service import TaskService
 
 log = logging.getLogger("edict.api.compat")
@@ -123,20 +124,87 @@ def _load_agent_config_json() -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def _list_skills_for_agent(agent_id: str) -> list[dict]:
-    """扫描 agents/<agent_id>/skills/ 目录返回技能列表。"""
-    skills_dir = AGENTS_DIR / agent_id / "skills"
-    if not skills_dir.is_dir():
-        return []
-    skills = []
-    for f in sorted(skills_dir.iterdir()):
-        if f.suffix in (".md", ".txt", ".js"):
-            skills.append({
-                "name": f.stem,
-                "description": "",
-                "path": str(f),
-            })
+def _agent_entries(saved_configs: dict) -> dict[str, dict]:
+    entries: dict[str, dict] = {}
+    for item in saved_configs.get("agents", []):
+        if isinstance(item, dict) and item.get("id"):
+            entries[str(item["id"])] = item
+    for agent_id in AGENT_META_MAP:
+        legacy = saved_configs.get(agent_id)
+        if isinstance(legacy, dict):
+            entries.setdefault(agent_id, {}).update(legacy)
+    return entries
+
+
+def _workspace_skill_dir(agent_id: str) -> Path:
+    return Path.home() / ".openclaw" / f"workspace-{agent_id}" / "skills"
+
+
+def _safe_skill_name(name: str) -> str:
+    value = "".join(ch for ch in name.strip() if ch.isalnum() or ch in ("-", "_", "."))[:80]
+    return value.strip(".")
+
+
+def _list_skills_for_agent(agent_id: str, cfg: dict | None = None) -> list[dict]:
+    skills: list[dict] = []
+    seen: set[str] = set()
+    for item in (cfg or {}).get("skills", []) if isinstance(cfg, dict) else []:
+        if not isinstance(item, dict) or not item.get("name"):
+            continue
+        name = str(item["name"])
+        seen.add(name)
+        skills.append({
+            "name": name,
+            "description": str(item.get("description") or ""),
+            "path": str(item.get("path") or ""),
+        })
+    for skills_dir in (AGENTS_DIR / agent_id / "skills", _workspace_skill_dir(agent_id)):
+        if not skills_dir.is_dir():
+            continue
+        for f in sorted(skills_dir.iterdir()):
+            skill_file = f / "SKILL.md" if f.is_dir() else f
+            if skill_file.suffix not in (".md", ".txt", ".js") or not skill_file.exists():
+                continue
+            name = f.name if f.is_dir() else f.stem
+            if name in seen:
+                continue
+            seen.add(name)
+            skills.append({"name": name, "description": "", "path": str(skill_file)})
     return skills
+
+
+async def _load_astrbot_models() -> tuple[list[dict], str, str]:
+    settings = get_settings()
+    if not settings.astrbot_api_url or not settings.astrbot_api_key:
+        return [], "local", "AstrBot API 未配置"
+    headers = {"Authorization": f"Bearer {settings.astrbot_api_key}", "X-API-Key": settings.astrbot_api_key}
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(f"{settings.astrbot_api_url.rstrip('/')}/api/v1/configs", headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:
+        log.warning("AstrBot config list unavailable: %s", exc)
+        return [], "local", "AstrBot 暂不可达，已回退本地模型列表"
+    configs = ((data.get("data") or {}).get("configs") or []) if isinstance(data, dict) else []
+    models = []
+    for item in configs:
+        if not isinstance(item, dict):
+            continue
+        config_id = str(item.get("id") or "").strip()
+        if not config_id:
+            continue
+        name = str(item.get("name") or config_id).strip()
+        models.append({
+            "id": f"astrbot-config:{config_id}",
+            "label": f"AstrBot 配置：{name}",
+            "provider": "AstrBot",
+            "source": "astrbot-configs",
+            "configId": config_id,
+            "configName": name,
+            "isDefault": bool(item.get("is_default")),
+        })
+    return models, "astrbot-configs", f"已从 AstrBot 读取 {len(models)} 个配置" if models else "AstrBot 未返回配置"
 
 
 # ══════════════════════════════════════════
@@ -159,22 +227,29 @@ async def live_status(svc: TaskService = Depends(_get_svc)):
 async def agent_config():
     """兼容旧 /api/agent-config — 返回 agents + skills + models。"""
     saved_configs = _load_agent_config_json()
+    saved_agents = _agent_entries(saved_configs)
     agents = []
     for agent_id, meta in AGENT_META_MAP.items():
-        cfg = saved_configs.get(agent_id, {})
+        cfg = saved_agents.get(agent_id, {})
+        model = str(cfg.get("model") or cfg.get("modelId") or "default")
         agents.append({
             "id": agent_id,
             "label": meta["name"],
             "emoji": meta["icon"],
             "role": meta["role"],
-            "model": cfg.get("model", "default"),
-            "skills": _list_skills_for_agent(agent_id),
+            "model": model,
+            "skills": _list_skills_for_agent(agent_id, cfg),
         })
 
-    dispatch_channel = saved_configs.get("_dispatch_channel") or get_settings().default_dispatch_channel
+    astrbot_models, model_source, model_message = await _load_astrbot_models()
+    local_models = saved_configs.get("knownModels") or saved_configs.get("_known_models") or DEFAULT_KNOWN_MODELS
+    known_models = astrbot_models or local_models
+    dispatch_channel = saved_configs.get("dispatchChannel") or saved_configs.get("_dispatch_channel") or get_settings().default_dispatch_channel
     return {
         "agents": agents,
-        "knownModels": saved_configs.get("_known_models") or DEFAULT_KNOWN_MODELS,
+        "knownModels": known_models,
+        "modelSource": model_source,
+        "modelSourceMessage": model_message,
         "dispatchChannel": dispatch_channel,
     }
 
@@ -532,16 +607,29 @@ async def scheduler_state(task_id: str, svc: TaskService = Depends(_get_svc)):
 @router.get("/api/skill-content/{agent_id}/{skill_name}")
 async def skill_content(agent_id: str, skill_name: str):
     """兼容旧 /api/skill-content/{agentId}/{skillName}。"""
+    safe_name = _safe_skill_name(skill_name)
+    saved_configs = _load_agent_config_json()
+    cfg = _agent_entries(saved_configs).get(agent_id, {})
+    candidates: list[Path] = []
+    for item in cfg.get("skills", []) if isinstance(cfg, dict) else []:
+        if isinstance(item, dict) and item.get("name") == skill_name and item.get("path"):
+            candidates.append(Path(str(item["path"])))
     for ext in (".md", ".txt", ".js", ""):
-        p = AGENTS_DIR / agent_id / "skills" / f"{skill_name}{ext}"
-        if p.exists():
-            return {
-                "ok": True,
-                "name": skill_name,
-                "agent": agent_id,
-                "content": p.read_text(encoding="utf-8"),
-                "path": str(p),
-            }
+        candidates.append(AGENTS_DIR / agent_id / "skills" / f"{safe_name}{ext}")
+    candidates.append(_workspace_skill_dir(agent_id) / safe_name / "SKILL.md")
+
+    for p in candidates:
+        try:
+            if p.exists() and p.is_file():
+                return {
+                    "ok": True,
+                    "name": skill_name,
+                    "agent": agent_id,
+                    "content": p.read_text(encoding="utf-8"),
+                    "path": str(p),
+                }
+        except OSError:
+            continue
     return {"ok": False, "error": f"Skill '{skill_name}' not found for agent '{agent_id}'"}
 
 
@@ -559,27 +647,45 @@ class DispatchChannelBody(BaseModel):
 @router.post("/api/set-model")
 async def set_model(body: SetModelBody):
     saved_configs = _load_agent_config_json()
-    agent_config = saved_configs.setdefault(body.agentId, {})
-    old_model = agent_config.get("model", "default")
+    saved_agents = _agent_entries(saved_configs)
+    agent_config = saved_agents.setdefault(body.agentId, {})
+    old_model = str(agent_config.get("model") or "default")
+    now = datetime.now(timezone.utc).isoformat()
+
+    agent_config["id"] = body.agentId
     agent_config["model"] = body.model
-    agent_config["updated_at"] = datetime.now(timezone.utc).isoformat()
+    agent_config["updated_at"] = now
+    if body.model.startswith("astrbot-config:"):
+        agent_config["astrbot_config_id"] = body.model.split(":", 1)[1]
+        agent_config.pop("astrbot_config_name", None)
+    elif body.model == "default":
+        agent_config.pop("astrbot_config_id", None)
+        agent_config.pop("astrbot_config_name", None)
+    else:
+        agent_config.pop("astrbot_config_id", None)
+        agent_config["selected_model"] = body.model
+
+    existing_agents = [item for item in saved_configs.get("agents", []) if isinstance(item, dict) and item.get("id") != body.agentId]
+    existing_agents.append(agent_config)
+    saved_configs["agents"] = existing_agents
 
     change_log = saved_configs.setdefault("_model_change_log", [])
     change_log.append({
-        "at": agent_config["updated_at"],
+        "at": now,
         "agentId": body.agentId,
         "oldModel": old_model,
         "newModel": body.model,
-        "effective": "saved_config_only",
+        "effective": "new_astrbot_dispatches",
     })
     saved_configs["_model_change_log"] = change_log[-MODEL_CHANGE_LOG_LIMIT:]
     _write_json(AGENT_CONFIG_PATH, saved_configs)
-    return {"ok": True, "message": "模型配置已保存；当前运行时不会热切换已派发中的任务。"}
+    return {"ok": True, "message": "模型配置已保存；新派发到 AstrBot 的任务会读取该配置。"}
 
 
 @router.post("/api/set-dispatch-channel")
 async def set_dispatch_channel(body: DispatchChannelBody):
     saved_configs = _load_agent_config_json()
+    saved_configs["dispatchChannel"] = body.channel
     saved_configs["_dispatch_channel"] = body.channel
     saved_configs["_dispatch_channel_updated_at"] = datetime.now(timezone.utc).isoformat()
     _write_json(AGENT_CONFIG_PATH, saved_configs)
@@ -749,7 +855,10 @@ async def _run_morning_refresh() -> None:
         _morning_refresh_running = True
         try:
             config = _load_morning_config()
-            await collect_morning_brief(config, DATA_DIR)
+            brief = await collect_morning_brief(config, DATA_DIR)
+            push_results = push_morning_brief(brief, config)
+            if push_results:
+                log.info("Morning brief push results: %s", push_results)
             log.info("Morning brief refreshed")
         except Exception:
             log.exception("Morning brief refresh failed")
@@ -798,23 +907,168 @@ async def refresh_morning(background_tasks: BackgroundTasks):
 
 @router.get("/api/remote-skills-list")
 async def remote_skills_list():
-    return {"ok": True, "remoteSkills": [], "count": 0}
+    saved_configs = _load_agent_config_json()
+    remote_skills = saved_configs.get("remoteSkills")
+    if not isinstance(remote_skills, list):
+        remote_skills = []
+    return {
+        "ok": True,
+        "remoteSkills": remote_skills,
+        "count": len(remote_skills),
+        "listedAt": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+class AddSkillBody(BaseModel):
+    agentId: str
+    skillName: str
+    description: str = ""
+    trigger: str = ""
+
+
+class RemoteSkillBody(BaseModel):
+    agentId: str
+    skillName: str
+    sourceUrl: str = ""
+    description: str = ""
+
+
+class SkillRefBody(BaseModel):
+    agentId: str
+    skillName: str
+
+
+def _write_local_skill(agent_id: str, skill_name: str, content: str) -> Path:
+    safe_name = _safe_skill_name(skill_name)
+    if not safe_name:
+        raise ValueError("技能名称无效")
+    skills_dir = _workspace_skill_dir(agent_id) / safe_name
+    skills_dir.mkdir(parents=True, exist_ok=True)
+    path = skills_dir / "SKILL.md"
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+def _upsert_skill_config(agent_id: str, name: str, description: str, path: Path) -> None:
+    saved_configs = _load_agent_config_json()
+    saved_agents = _agent_entries(saved_configs)
+    agent_config = saved_agents.setdefault(agent_id, {"id": agent_id})
+    skills = [item for item in agent_config.get("skills", []) if isinstance(item, dict) and item.get("name") != name]
+    skills.append({"name": name, "description": description, "path": str(path)})
+    agent_config["id"] = agent_id
+    agent_config["skills"] = skills
+    existing_agents = [item for item in saved_configs.get("agents", []) if isinstance(item, dict) and item.get("id") != agent_id]
+    existing_agents.append(agent_config)
+    saved_configs["agents"] = existing_agents
+    _write_json(AGENT_CONFIG_PATH, saved_configs)
+
 
 @router.post("/api/add-skill")
-async def add_skill():
-    return {"ok": True}
+async def add_skill(body: AddSkillBody):
+    safe_name = _safe_skill_name(body.skillName)
+    if not safe_name:
+        return {"ok": False, "error": "技能名称无效"}
+    content = "\n".join([
+        f"# {safe_name}",
+        "",
+        body.description.strip() or "本地技能。",
+        "",
+        "## 触发方式",
+        body.trigger.strip() or "由任务上下文判断是否使用。",
+    ]).strip() + "\n"
+    try:
+        path = _write_local_skill(body.agentId, safe_name, content)
+        _upsert_skill_config(body.agentId, safe_name, body.description, path)
+    except OSError as exc:
+        return {"ok": False, "error": f"写入技能失败：{exc}"}
+    return {"ok": True, "message": "技能已保存到本地工作区", "skillName": safe_name, "agentId": body.agentId, "localPath": str(path)}
+
 
 @router.post("/api/add-remote-skill")
-async def add_remote_skill():
-    return {"ok": True}
+async def add_remote_skill(body: RemoteSkillBody):
+    safe_name = _safe_skill_name(body.skillName)
+    if not safe_name:
+        return {"ok": False, "error": "技能名称无效"}
+    if not body.sourceUrl.startswith("https://"):
+        return {"ok": False, "error": "远程技能仅允许 HTTPS 地址"}
+    try:
+        async with httpx.AsyncClient(timeout=12, follow_redirects=True) as client:
+            resp = await client.get(body.sourceUrl)
+            resp.raise_for_status()
+            content = resp.text[:200_000]
+        path = _write_local_skill(body.agentId, safe_name, content)
+        _upsert_skill_config(body.agentId, safe_name, body.description, path)
+    except Exception as exc:
+        return {"ok": False, "error": f"导入远程技能失败：{exc}"}
+
+    saved_configs = _load_agent_config_json()
+    remote_skills = [item for item in saved_configs.get("remoteSkills", []) if isinstance(item, dict) and not (item.get("agentId") == body.agentId and item.get("skillName") == safe_name)]
+    now = datetime.now(timezone.utc).isoformat()
+    record = {
+        "skillName": safe_name,
+        "agentId": body.agentId,
+        "sourceUrl": body.sourceUrl,
+        "description": body.description,
+        "localPath": str(path),
+        "addedAt": now,
+        "lastUpdated": now,
+        "status": "valid",
+    }
+    remote_skills.append(record)
+    saved_configs["remoteSkills"] = remote_skills
+    _write_json(AGENT_CONFIG_PATH, saved_configs)
+    return {"ok": True, "message": "远程技能已导入本地工作区", **record}
+
 
 @router.post("/api/update-remote-skill")
-async def update_remote_skill():
-    return {"ok": True}
+async def update_remote_skill(body: SkillRefBody):
+    saved_configs = _load_agent_config_json()
+    remote_skills = saved_configs.get("remoteSkills") if isinstance(saved_configs.get("remoteSkills"), list) else []
+    target = next((item for item in remote_skills if isinstance(item, dict) and item.get("agentId") == body.agentId and item.get("skillName") == body.skillName), None)
+    if not target:
+        return {"ok": False, "error": "未找到远程技能记录"}
+    try:
+        async with httpx.AsyncClient(timeout=12, follow_redirects=True) as client:
+            resp = await client.get(str(target.get("sourceUrl") or ""))
+            resp.raise_for_status()
+            content = resp.text[:200_000]
+        path = _write_local_skill(body.agentId, body.skillName, content)
+        target["localPath"] = str(path)
+        target["lastUpdated"] = datetime.now(timezone.utc).isoformat()
+        target["status"] = "valid"
+        _upsert_skill_config(body.agentId, body.skillName, str(target.get("description") or ""), path)
+        saved_configs["remoteSkills"] = remote_skills
+        _write_json(AGENT_CONFIG_PATH, saved_configs)
+    except Exception as exc:
+        target["status"] = "not-found"
+        _write_json(AGENT_CONFIG_PATH, saved_configs)
+        return {"ok": False, "error": f"更新远程技能失败：{exc}"}
+    return {"ok": True, "message": "远程技能已更新"}
+
 
 @router.post("/api/remove-remote-skill")
-async def remove_remote_skill():
-    return {"ok": True}
+async def remove_remote_skill(body: SkillRefBody):
+    saved_configs = _load_agent_config_json()
+    remote_skills = saved_configs.get("remoteSkills") if isinstance(saved_configs.get("remoteSkills"), list) else []
+    saved_configs["remoteSkills"] = [item for item in remote_skills if not (isinstance(item, dict) and item.get("agentId") == body.agentId and item.get("skillName") == body.skillName)]
+    saved_agents = _agent_entries(saved_configs)
+    agent_config = saved_agents.get(body.agentId)
+    if agent_config:
+        agent_config["skills"] = [item for item in agent_config.get("skills", []) if not (isinstance(item, dict) and item.get("name") == body.skillName)]
+        existing_agents = [item for item in saved_configs.get("agents", []) if isinstance(item, dict) and item.get("id") != body.agentId]
+        existing_agents.append(agent_config)
+        saved_configs["agents"] = existing_agents
+    skill_dir = _workspace_skill_dir(body.agentId) / _safe_skill_name(body.skillName)
+    skill_file = skill_dir / "SKILL.md"
+    try:
+        if skill_file.exists():
+            skill_file.unlink()
+        if skill_dir.exists() and not any(skill_dir.iterdir()):
+            skill_dir.rmdir()
+    except OSError as exc:
+        return {"ok": False, "error": f"删除技能文件失败：{exc}"}
+    _write_json(AGENT_CONFIG_PATH, saved_configs)
+    return {"ok": True, "message": "技能已移除"}
 
 # ── Court Discuss (朝堂议政) ──
 

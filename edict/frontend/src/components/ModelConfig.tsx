@@ -58,8 +58,9 @@ export default function ModelConfig() {
   }
 
   const models = agentConfig.knownModels?.length
-    ? agentConfig.knownModels.map((m) => ({ id: m.id, l: m.label, p: m.provider }))
-    : FALLBACK_MODELS;
+    ? agentConfig.knownModels.map((m) => ({ id: m.id, l: m.label, p: m.provider, source: m.source }))
+    : FALLBACK_MODELS.map((m) => ({ ...m, source: 'frontend-fallback' }));
+  const sourceOk = agentConfig.modelSource === 'astrbot-configs';
 
   const handleSelect = (agentId: string, val: string) => {
     setSelMap((p) => ({ ...p, [agentId]: val }));
@@ -91,6 +92,10 @@ export default function ModelConfig() {
 
   return (
     <div>
+      <div style={{ marginBottom: 12, fontSize: 12, color: sourceOk ? 'var(--ok)' : 'var(--muted)' }}>
+        模型来源：{sourceOk ? 'AstrBot 当前配置' : '本地/降级配置'}
+        {agentConfig.modelSourceMessage ? ` · ${agentConfig.modelSourceMessage}` : ''}
+      </div>
       <div className="model-grid">
         {agentConfig.agents.map((ag) => {
           const sel = selMap[ag.id] || ag.model;
@@ -110,11 +115,14 @@ export default function ModelConfig() {
               </div>
               <div className="mc-cur">
                 当前: <b>{ag.model}</b>
+                {ag.model.startsWith('astrbot-config:') && (
+                  <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--ok)' }}>AstrBot 生效</span>
+                )}
               </div>
               <select className="msel" value={sel} onChange={(e) => handleSelect(ag.id, e.target.value)}>
                 {models.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.l} ({m.p})
+                    {m.l} ({m.p}){m.source === 'astrbot-configs' ? ' · 当前 AstrBot' : ''}
                   </option>
                 ))}
               </select>

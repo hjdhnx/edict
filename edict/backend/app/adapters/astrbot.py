@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from pathlib import Path
 
 import httpx
 
@@ -24,6 +25,30 @@ def _build_soul_context(agent_id: str) -> str:
     """延迟导入以复用 OpenClaw 适配器的 SOUL.md 加载逻辑。"""
     from .openclaw import _build_soul_context
     return _build_soul_context(agent_id)
+
+
+def _resolve_project_root() -> Path:
+    here = Path(__file__).resolve()
+    candidates = [Path.cwd(), *here.parents]
+    for candidate in candidates:
+        if (candidate / "data").exists() or (candidate / "agents").exists():
+            return candidate
+    return Path.cwd()
+
+
+def _load_agent_runtime_config(agent_id: str) -> dict:
+    path = _resolve_project_root() / "data" / "agent_config.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    for item in data.get("agents", []):
+        if isinstance(item, dict) and item.get("id") == agent_id:
+            return item
+    legacy = data.get(agent_id)
+    return legacy if isinstance(legacy, dict) else {}
 
 
 class AstrBotAdapter(AgentAdapter):
@@ -70,12 +95,28 @@ class AstrBotAdapter(AgentAdapter):
             "message": message,
             "enable_streaming": False,
         }
-        if self._config_id:
-            body["config_id"] = self._config_id
-        elif self._config_name:
-            body["config_name"] = self._config_name
+        agent_config = _load_agent_runtime_config(agent)
+        config_id = str(agent_config.get("astrbot_config_id") or self._config_id).strip()
+        config_name = str(agent_config.get("astrbot_config_name") or self._config_name).strip()
+        selected_model = str(agent_config.get("selected_model") or "").strip()
+        selected_provider = str(agent_config.get("selected_provider") or "").strip()
+        model_value = str(agent_config.get("model") or "").strip()
+        if model_value.startswith("astrbot-config:"):
+            config_id = model_value.split(":", 1)[1]
+            config_name = ""
+        elif model_value and model_value != "default" and not selected_model:
+            selected_model = model_value
 
-        config_hint = self._config_id or self._config_name or "default"
+        if config_id:
+            body["config_id"] = config_id
+        elif config_name:
+            body["config_name"] = config_name
+        if selected_provider:
+            body["selected_provider"] = selected_provider
+        if selected_model:
+            body["selected_model"] = selected_model
+
+        config_hint = config_id or config_name or selected_model or "default"
         log.info(
             f"Calling AstrBot: agent={agent}, session={session_id}, "
             f"task={task_id}, config={config_hint}, msg_len={len(message)}"

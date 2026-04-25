@@ -75,6 +75,18 @@ def _resolve_agents_dir() -> pathlib.Path:
     return pathlib.Path(__file__).resolve().parents[4] / "agents"
 
 
+def _resolve_data_dir() -> pathlib.Path:
+    agents_dir = _resolve_agents_dir()
+    for candidate in (agents_dir.parent / "data", pathlib.Path.cwd() / "data", pathlib.Path(__file__).resolve().parents[4] / "data"):
+        if candidate.exists():
+            return candidate
+    return agents_dir.parent / "data"
+
+
+def _workspace_skill_dir(agent_id: str) -> pathlib.Path:
+    return pathlib.Path.home() / ".openclaw" / f"workspace-{agent_id}" / "skills"
+
+
 def _build_soul_context(agent_id: str) -> str:
     """拼装三层 prompt 层级：GLOBAL.md → group/*.md → {agent}/SOUL.md。"""
     agents_dir = _resolve_agents_dir()
@@ -290,29 +302,62 @@ def _sanitize_agent_output(output: str, agent_id: str) -> tuple[str, list[str]]:
 def _load_agent_skills(agent_id: str, payload: dict) -> str:
     """按任务特征动态加载 Agent Skills（延迟能力加载）。"""
     agents_dir = _resolve_agents_dir()
-    manifest_path = agents_dir / agent_id / "skills" / "manifest.json"
-    if not manifest_path.exists():
-        return ""
-
-    try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return ""
-
     task_tags = set(payload.get("tags", []))
     task_org = payload.get("org", "")
+    matched_skills: list[str] = []
+    seen_paths: set[str] = set()
 
-    matched_skills = []
-    for skill in manifest.get("skills", []):
-        tag_match = task_tags & set(skill.get("match_tags", []))
-        org_match = task_org in skill.get("match_orgs", [])
-        if tag_match or org_match:
-            skill_path = agents_dir / agent_id / "skills" / skill["file"]
-            if skill_path.exists():
+    manifest_path = agents_dir / agent_id / "skills" / "manifest.json"
+    if manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            manifest = {}
+        for skill in manifest.get("skills", []):
+            tag_match = task_tags & set(skill.get("match_tags", []))
+            org_match = task_org in skill.get("match_orgs", [])
+            if tag_match or org_match:
+                skill_path = agents_dir / agent_id / "skills" / skill["file"]
+                if skill_path.exists():
+                    try:
+                        seen_paths.add(str(skill_path.resolve()))
+                        matched_skills.append(skill_path.read_text(encoding="utf-8"))
+                    except OSError:
+                        pass
+
+    config_path = _resolve_data_dir() / "agent_config.json"
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        config = {}
+    if isinstance(config, dict):
+        for item in config.get("agents", []):
+            if not isinstance(item, dict) or item.get("id") != agent_id:
+                continue
+            for skill in item.get("skills", []):
+                if not isinstance(skill, dict) or not skill.get("path"):
+                    continue
+                skill_path = pathlib.Path(str(skill["path"]))
                 try:
+                    resolved = str(skill_path.resolve())
+                    if resolved in seen_paths or not skill_path.exists() or not skill_path.is_file():
+                        continue
+                    seen_paths.add(resolved)
                     matched_skills.append(skill_path.read_text(encoding="utf-8"))
                 except OSError:
-                    pass
+                    continue
+
+    workspace = _workspace_skill_dir(agent_id)
+    if workspace.is_dir():
+        for skill_file in sorted(workspace.glob("*/SKILL.md")):
+            try:
+                resolved = str(skill_file.resolve())
+                if resolved in seen_paths:
+                    continue
+                seen_paths.add(resolved)
+                matched_skills.append(skill_file.read_text(encoding="utf-8"))
+            except OSError:
+                continue
 
     if matched_skills:
         return "## 本次任务相关技能\n" + "\n---\n".join(matched_skills)

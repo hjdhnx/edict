@@ -15,6 +15,8 @@ from xml.etree import ElementTree as ET
 
 import httpx
 
+from ..channels import get_channel
+
 log = logging.getLogger("edict.morning_brief")
 
 DEFAULT_CATEGORIES = ["政治", "军事", "经济", "AI大模型"]
@@ -265,6 +267,64 @@ def _atomic_write_json(path: Path, data: dict[str, Any]) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(path)
+
+
+def _format_item_line(item: dict[str, Any]) -> str:
+    title = str(item.get("title") or "无标题").strip()
+    source = str(item.get("source") or "未知来源").strip()
+    link = str(item.get("link") or "").strip()
+    if link:
+        return f"- [{title}]({link})（{source}）"
+    return f"- {title}（{source}）"
+
+
+def format_morning_brief_markdown(brief: dict[str, Any]) -> str:
+    date_text = str(brief.get("date") or date.today().strftime("%Y%m%d"))
+    generated_at = str(brief.get("generated_at") or "")
+    lines = [f"🌅 **天下要闻 {date_text}**"]
+    if generated_at:
+        lines.append(f"> 采集时间：{generated_at}")
+    lines.append("")
+    categories = brief.get("categories") or {}
+    for category, items in categories.items():
+        lines.append(f"### {category}")
+        for item in (items or [])[:3]:
+            lines.append(_format_item_line(item))
+        if not items:
+            lines.append("- 暂无新闻")
+        lines.append("")
+    total = sum(len(items or []) for items in categories.values())
+    lines.append(f"共 {total} 条，以上为每类前 3 条。")
+    return "\n".join(lines).strip()
+
+
+def _send_channel(channel_name: str, webhook: str, title: str, content: str) -> bool:
+    webhook = webhook.strip()
+    if not webhook:
+        return False
+    channel = get_channel(channel_name)
+    if channel is None:
+        return False
+    if not channel.validate_webhook(webhook):
+        log.warning("Invalid %s webhook skipped", channel_name)
+        return False
+    ok = channel.send(webhook, title, content)
+    if not ok:
+        log.warning("%s webhook push failed", channel_name)
+    return ok
+
+
+def push_morning_brief(brief: dict[str, Any], config: dict[str, Any]) -> dict[str, bool]:
+    content = format_morning_brief_markdown(brief)
+    title = "天下要闻"
+    results: dict[str, bool] = {}
+    wecom = str(config.get("wecom_webhook") or "").strip()
+    feishu = str(config.get("feishu_webhook") or "").strip()
+    if wecom:
+        results["wecom"] = _send_channel("wecom", wecom, title, content)
+    if feishu:
+        results["feishu"] = _send_channel("feishu", feishu, title, content)
+    return results
 
 
 async def collect_morning_brief(config: dict[str, Any], data_dir: Path) -> dict[str, Any]:

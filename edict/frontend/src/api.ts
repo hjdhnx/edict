@@ -216,11 +216,17 @@ export interface KnownModel {
   id: string;
   label: string;
   provider: string;
+  source?: string;
+  configId?: string;
+  configName?: string;
+  isDefault?: boolean;
 }
 
 export interface AgentConfig {
   agents: AgentInfo[];
   knownModels?: KnownModel[];
+  modelSource?: string;
+  modelSourceMessage?: string;
   dispatchChannel?: string;
 }
 

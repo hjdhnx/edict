@@ -200,7 +200,14 @@ export default function MorningPanel() {
           onAddFeed={addFeed}
           onRemoveFeed={removeFeed}
           onSave={saveConfig}
-          onSetWebhook={(v) => setLocalConfig({ ...localConfig, wecom_webhook: v })}
+          onSetWebhook={(v) => {
+            const value = v.trim();
+            setLocalConfig({
+              ...localConfig,
+              wecom_webhook: value.includes('qyapi.weixin.qq.com') ? value : '',
+              feishu_webhook: value.includes('open.feishu.cn') || value.includes('open.larksuite.com') ? value : '',
+            });
+          }}
         />
       )}
 
@@ -406,16 +413,17 @@ function SubConfigPanel({
         </div>
       </div>
 
-      {/* WeCom Webhook */}
+      {/* Webhook */}
       <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>企业微信 Webhook</div>
+        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>推送 Webhook（企业微信 / 飞书）</div>
         <input
           type="text"
           value={config.wecom_webhook || config.feishu_webhook || ''}
           onChange={(e) => onSetWebhook(e.target.value)}
-          placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..."
+          placeholder="企业微信 https://qyapi.weixin.qq.com/... 或飞书 https://open.feishu.cn/..."
           style={{ width: '100%', padding: '8px 10px', background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 6, color: 'var(--text)', fontSize: 12, outline: 'none' }}
         />
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>配置后采集成功会推送 Markdown 摘要；留空则不推送。</div>
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
