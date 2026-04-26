@@ -1,5 +1,7 @@
 # 三省六部 Windows 安装说明（简明版 + 详细版）
 
+> 历史说明：本文主要面向早期 OpenClaw 安装路径。当前推荐 Windows 用户优先使用 Docker Desktop + `edict/docker-compose.yml`，详见 [`README.md`](README.md) 和 [`docs/getting-started.md`](docs/getting-started.md)。
+
 > 适用于 Windows 用户。本文默认你下载的是**已经包含 Windows 兼容修复**的版本，因此不需要再手动改 Python 文件。
 
 ---

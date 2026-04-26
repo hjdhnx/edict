@@ -192,9 +192,17 @@ export interface SyncStatus {
   [key: string]: unknown;
 }
 
+export interface AppVersion {
+  name: string;
+  version: string;
+  build: string;
+  label: string;
+}
+
 export interface LiveStatus {
   tasks: Task[];
   syncStatus: SyncStatus;
+  version?: AppVersion;
 }
 
 export interface AgentInfo {
@@ -455,18 +463,35 @@ export interface RemoteSkillsListResult {
 
 // ── 朝堂议政 ──
 
+export interface CourtOfficial {
+  id: string;
+  name: string;
+  emoji?: string;
+  role?: string;
+  personality?: string;
+  speaking_style?: string;
+}
+
+export interface CourtMessage {
+  type?: 'official' | 'emperor' | 'decree' | 'scene' | 'summary' | string;
+  official_id?: string;
+  official_name?: string;
+  name?: string;
+  content: string;
+  emotion?: string;
+  action?: string;
+  timestamp?: string;
+}
+
 export interface CourtDiscussResult {
   ok: boolean;
   session_id?: string;
   topic?: string;
+  officials?: CourtOfficial[];
+  messages?: CourtMessage[];
+  phase?: 'active' | 'concluded' | string;
   round?: number;
-  new_messages?: Array<{
-    official_id: string;
-    name: string;
-    content: string;
-    emotion?: string;
-    action?: string;
-  }>;
+  new_messages?: CourtMessage[];
   scene_note?: string;
   total_messages?: number;
   error?: string;

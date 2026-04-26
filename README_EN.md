@@ -1,5 +1,7 @@
 <h1 align="center">⚔️ Edict · Multi-Agent Orchestration</h1>
 
+> Note: this English README is a historical translation and may lag behind the current Docker/FastAPI/Vue/AstrBot stack. For the latest setup and architecture, use [README.md](README.md), [docs/getting-started.md](docs/getting-started.md), and [edict/项目价值报告V2.md](edict/项目价值报告V2.md).
+
 <p align="center">
   <strong>I modeled an AI multi-agent system after China's 1,300-year-old imperial governance.<br>Turns out, ancient bureaucracy understood separation of powers better than modern AI frameworks.</strong>
 </p>

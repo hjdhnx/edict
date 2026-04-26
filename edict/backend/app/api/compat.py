@@ -26,6 +26,7 @@ from ..models.task import TaskState
 from ..services.event_bus import EventBus, get_event_bus, TOPIC_TASK_DISPATCH
 from ..services.morning_brief import DEFAULT_CATEGORIES, collect_morning_brief, normalize_morning_config, push_morning_brief
 from ..services.task_service import TaskService
+from ..version import APP_BUILD, APP_NAME, APP_VERSION, APP_VERSION_LABEL
 
 log = logging.getLogger("edict.api.compat")
 router = APIRouter()
@@ -137,6 +138,10 @@ def _agent_entries(saved_configs: dict) -> dict[str, dict]:
 
 
 def _workspace_skill_dir(agent_id: str) -> Path:
+    return DATA_DIR / "skills" / agent_id
+
+
+def _legacy_workspace_skill_dir(agent_id: str) -> Path:
     return Path.home() / ".openclaw" / f"workspace-{agent_id}" / "skills"
 
 
@@ -158,7 +163,7 @@ def _list_skills_for_agent(agent_id: str, cfg: dict | None = None) -> list[dict]
             "description": str(item.get("description") or ""),
             "path": str(item.get("path") or ""),
         })
-    for skills_dir in (AGENTS_DIR / agent_id / "skills", _workspace_skill_dir(agent_id)):
+    for skills_dir in (AGENTS_DIR / agent_id / "skills", _workspace_skill_dir(agent_id), _legacy_workspace_skill_dir(agent_id)):
         if not skills_dir.is_dir():
             continue
         for f in sorted(skills_dir.iterdir()):
@@ -220,6 +225,12 @@ async def live_status(svc: TaskService = Depends(_get_svc)):
     return {
         "tasks": active + completed,
         "syncStatus": {"ok": True},
+        "version": {
+            "name": APP_NAME,
+            "version": APP_VERSION,
+            "build": APP_BUILD,
+            "label": APP_VERSION_LABEL,
+        },
     }
 
 
@@ -604,6 +615,28 @@ async def scheduler_state(task_id: str, svc: TaskService = Depends(_get_svc)):
 
 # ── Skill Content ──
 
+async def _restore_remote_skill_file(agent_id: str, skill_name: str) -> Path | None:
+    saved_configs = _load_agent_config_json()
+    remote_skills = saved_configs.get("remoteSkills") if isinstance(saved_configs.get("remoteSkills"), list) else []
+    target = next((
+        item for item in remote_skills
+        if isinstance(item, dict) and item.get("agentId") == agent_id and item.get("skillName") == skill_name
+    ), None)
+    if not target or not str(target.get("sourceUrl") or "").startswith("https://"):
+        return None
+    async with httpx.AsyncClient(timeout=12, follow_redirects=True) as client:
+        resp = await client.get(str(target["sourceUrl"]))
+        resp.raise_for_status()
+        content = resp.text[:200_000]
+    path = _write_local_skill(agent_id, skill_name, content)
+    target["localPath"] = str(path)
+    target["lastUpdated"] = datetime.now(timezone.utc).isoformat()
+    target["status"] = "valid"
+    saved_configs["remoteSkills"] = remote_skills
+    _upsert_skill_config(agent_id, skill_name, str(target.get("description") or ""), path, saved_configs)
+    return path
+
+
 @router.get("/api/skill-content/{agent_id}/{skill_name}")
 async def skill_content(agent_id: str, skill_name: str):
     """兼容旧 /api/skill-content/{agentId}/{skillName}。"""
@@ -617,6 +650,7 @@ async def skill_content(agent_id: str, skill_name: str):
     for ext in (".md", ".txt", ".js", ""):
         candidates.append(AGENTS_DIR / agent_id / "skills" / f"{safe_name}{ext}")
     candidates.append(_workspace_skill_dir(agent_id) / safe_name / "SKILL.md")
+    candidates.append(_legacy_workspace_skill_dir(agent_id) / safe_name / "SKILL.md")
 
     for p in candidates:
         try:
@@ -630,6 +664,19 @@ async def skill_content(agent_id: str, skill_name: str):
                 }
         except OSError:
             continue
+    try:
+        restored = await _restore_remote_skill_file(agent_id, safe_name)
+        if restored and restored.exists():
+            return {
+                "ok": True,
+                "name": safe_name,
+                "agent": agent_id,
+                "content": restored.read_text(encoding="utf-8"),
+                "path": str(restored),
+                "restored": True,
+            }
+    except Exception as exc:
+        log.warning("Failed to restore remote skill %s/%s: %s", agent_id, safe_name, exc)
     return {"ok": False, "error": f"Skill '{skill_name}' not found for agent '{agent_id}'"}
 
 
@@ -949,8 +996,8 @@ def _write_local_skill(agent_id: str, skill_name: str, content: str) -> Path:
     return path
 
 
-def _upsert_skill_config(agent_id: str, name: str, description: str, path: Path) -> None:
-    saved_configs = _load_agent_config_json()
+def _upsert_skill_config(agent_id: str, name: str, description: str, path: Path, saved_configs: dict | None = None) -> None:
+    saved_configs = saved_configs or _load_agent_config_json()
     saved_agents = _agent_entries(saved_configs)
     agent_config = saved_agents.setdefault(agent_id, {"id": agent_id})
     skills = [item for item in agent_config.get("skills", []) if isinstance(item, dict) and item.get("name") != name]

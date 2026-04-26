@@ -78,44 +78,95 @@ def upgrade() -> None:
     op.create_table(
         "thoughts",
         sa.Column("thought_id", sa.Uuid(), nullable=False, server_default=sa.text("gen_random_uuid()")),
-        sa.Column("trace_id", sa.String(64), nullable=False),
-        sa.Column("agent", sa.String(50), nullable=False),
-        sa.Column("step", sa.Integer(), server_default="0"),
-        sa.Column("type", sa.String(30), nullable=False),
-        sa.Column("content", sa.Text(), nullable=False),
+        sa.Column("trace_id", sa.String(32), nullable=False),
+        sa.Column("agent", sa.String(32), nullable=False),
+        sa.Column("step", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("type", sa.String(32), nullable=False, server_default="reasoning"),
+        sa.Column("source", sa.String(16), server_default="llm"),
+        sa.Column("content", sa.Text(), nullable=False, server_default=""),
         sa.Column("tokens", sa.Integer(), server_default="0"),
-        sa.Column("confidence", sa.Float(), nullable=True),
-        sa.Column("meta", postgresql.JSONB(), server_default="{}"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
+        sa.Column("confidence", sa.Float(), server_default="0"),
+        sa.Column("sensitive", sa.Boolean(), server_default=sa.text("false")),
+        sa.Column("timestamp", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.PrimaryKeyConstraint("thought_id"),
     )
     op.create_index("ix_thoughts_trace_id", "thoughts", ["trace_id"])
     op.create_index("ix_thoughts_agent", "thoughts", ["agent"])
+    op.create_index("ix_thoughts_trace_agent", "thoughts", ["trace_id", "agent"])
+    op.create_index("ix_thoughts_timestamp", "thoughts", ["timestamp"])
 
     # ── todos 表 ──
     op.create_table(
         "todos",
         sa.Column("todo_id", sa.Uuid(), nullable=False, server_default=sa.text("gen_random_uuid()")),
-        sa.Column("task_id", sa.Uuid(), nullable=False),
+        sa.Column("trace_id", sa.String(32), nullable=False),
         sa.Column("parent_id", sa.Uuid(), nullable=True),
-        sa.Column("title", sa.String(200), nullable=False),
-        sa.Column("status", sa.String(20), server_default="not-started"),
-        sa.Column("priority", sa.Integer(), server_default="0"),
-        sa.Column("assignee", sa.String(50), nullable=True),
-        sa.Column("detail", sa.Text(), server_default=""),
+        sa.Column("title", sa.String(256), nullable=False),
+        sa.Column("description", sa.Text(), server_default=""),
+        sa.Column("owner", sa.String(64), server_default=""),
+        sa.Column("assignee_agent", sa.String(32), server_default=""),
+        sa.Column("status", sa.String(32), nullable=False, server_default="open"),
+        sa.Column("priority", sa.String(16), server_default="normal"),
+        sa.Column("estimated_cost", sa.Float(), server_default="0"),
+        sa.Column("created_by", sa.String(64), server_default=""),
         sa.Column("checkpoints", postgresql.JSONB(), server_default="[]"),
         sa.Column("metadata", postgresql.JSONB(), server_default="{}"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.PrimaryKeyConstraint("todo_id"),
-        sa.ForeignKeyConstraint(["task_id"], ["tasks.task_id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["parent_id"], ["todos.todo_id"], ondelete="SET NULL"),
     )
-    op.create_index("ix_todos_task_id", "todos", ["task_id"])
+    op.create_index("ix_todos_trace_id", "todos", ["trace_id"])
     op.create_index("ix_todos_status", "todos", ["status"])
+    op.create_index("ix_todos_trace_status", "todos", ["trace_id", "status"])
+    # ── outbox_events 表 ──
+    op.create_table(
+        "outbox_events",
+        sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("event_id", sa.String(64), nullable=False, server_default=sa.text("gen_random_uuid()::text")),
+        sa.Column("topic", sa.String(100), nullable=False),
+        sa.Column("trace_id", sa.String(64), nullable=False),
+        sa.Column("event_type", sa.String(100), nullable=False),
+        sa.Column("producer", sa.String(100), nullable=False),
+        sa.Column("payload", postgresql.JSONB(), server_default="{}"),
+        sa.Column("meta", postgresql.JSONB(), server_default="{}"),
+        sa.Column("published", sa.Boolean(), server_default=sa.text("false")),
+        sa.Column("published_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("attempts", sa.Integer(), server_default="0"),
+        sa.Column("last_error", sa.Text(), nullable=True),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("event_id"),
+    )
+    op.create_index("ix_outbox_created_at", "outbox_events", ["created_at"])
+    op.create_index("ix_outbox_events_published", "outbox_events", ["published"])
+    op.create_index("ix_outbox_unpublished", "outbox_events", ["published", "id"], postgresql_where=sa.text("published = false"))
+
+    # ── audit_logs 表 ──
+    op.create_table(
+        "audit_logs",
+        sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
+        sa.Column("timestamp", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("task_id", sa.String(64), nullable=True),
+        sa.Column("trace_id", sa.String(64), nullable=True),
+        sa.Column("agent_id", sa.String(50), nullable=True),
+        sa.Column("action", sa.String(50), nullable=False),
+        sa.Column("old_value", postgresql.JSONB(), nullable=True),
+        sa.Column("new_value", postgresql.JSONB(), nullable=True),
+        sa.Column("reason", sa.Text(), server_default=""),
+        sa.Column("meta", postgresql.JSONB(), server_default="{}"),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_index("ix_audit_timestamp", "audit_logs", ["timestamp"])
+    op.create_index("ix_audit_task_id", "audit_logs", ["task_id"])
+    op.create_index("ix_audit_agent_id", "audit_logs", ["agent_id"])
+    op.create_index("ix_audit_action", "audit_logs", ["action"])
 
 
 def downgrade() -> None:
+    op.drop_table("audit_logs")
+    op.drop_index("ix_outbox_unpublished", table_name="outbox_events")
+    op.drop_table("outbox_events")
     op.drop_table("todos")
     op.drop_table("thoughts")
     op.drop_table("events")

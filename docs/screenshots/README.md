@@ -1,5 +1,7 @@
 # 📸 截图说明
 
+> 历史提示：本文部分命令来自旧版 `dashboard/server.py` 看板。当前主栈请先按 [`../../README.md`](../../README.md) 使用 `edict/docker-compose.yml` 启动，再根据实际页面重新截图。
+
 看板截图用于 README 和文档展示。请启动看板后按以下顺序截图并放置到本目录。
 
 ## 截图清单

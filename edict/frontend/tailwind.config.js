@@ -1,10 +1,10 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  darkMode: ['class', '[data-theme="dark"]'],
+  content: ['./index.html', './src/**/*.{vue,js,ts}'],
   theme: {
     extend: {
       colors: {
-        // 三省六部主题色
         imperial: {
           50: '#fef7ed',
           100: '#fdecd4',
@@ -33,4 +33,4 @@ export default {
     },
   },
   plugins: [],
-}
+};

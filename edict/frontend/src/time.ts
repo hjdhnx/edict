@@ -24,7 +24,8 @@ export function parseDashboardTimestamp(value: DashboardTimestamp): Date | null 
     return parseDashboardTimestamp(Number(raw));
   }
 
-  const d = new Date(raw);
+  const normalizedRaw = raw.replace(/(\.\d{3})\d+(?=(?:Z|[+\-]\d{2}:?\d{2})?$)/i, '$1');
+  const d = new Date(normalizedRaw);
   if (!Number.isNaN(d.getTime())) return d;
 
   if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(raw) && !hasExplicitTimezone(raw)) {

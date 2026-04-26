@@ -92,6 +92,10 @@ def _resolve_data_dir() -> pathlib.Path:
 
 
 def _workspace_skill_dir(agent_id: str) -> pathlib.Path:
+    return _resolve_data_dir() / "skills" / agent_id
+
+
+def _legacy_workspace_skill_dir(agent_id: str) -> pathlib.Path:
     return pathlib.Path.home() / ".openclaw" / f"workspace-{agent_id}" / "skills"
 
 
@@ -355,8 +359,9 @@ def _load_agent_skills(agent_id: str, payload: dict) -> str:
                 except OSError:
                     continue
 
-    workspace = _workspace_skill_dir(agent_id)
-    if workspace.is_dir():
+    for workspace in (_workspace_skill_dir(agent_id), _legacy_workspace_skill_dir(agent_id)):
+        if not workspace.is_dir():
+            continue
         for skill_file in sorted(workspace.glob("*/SKILL.md")):
             try:
                 resolved = str(skill_file.resolve())

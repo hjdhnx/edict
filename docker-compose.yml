@@ -1,3 +1,6 @@
+# 历史 demo Compose：仅用于旧版模拟数据看板，不是当前主栈。
+# 当前主启动入口请使用 edict/docker-compose.yml，端口为前端 7899、后端 7898。
+
 version: '3.8'
 
 services:

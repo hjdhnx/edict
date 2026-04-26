@@ -1,5 +1,7 @@
 # Edict Agent 架构重设计文档
 
+> 历史设计稿：本文是早期架构重设计草案，局部技术栈描述可能与当前实现不同。当前实现请优先阅读 [`README.md`](README.md)、[`docs/task-dispatch-architecture.md`](docs/task-dispatch-architecture.md) 和 [`edict/项目价值报告V2.md`](edict/项目价值报告V2.md)。
+
 ## 1. 设计目标
 - **可观测性**：Dashboard 能实时显示每个 agent 的思考流（thoughts）和 todo 变更。
 - **可重放 & 审计**：所有事件和状态变更持久化，可回溯。

@@ -1,457 +1,217 @@
 # 远程 Skills 资源管理指南
 
-## 概述
+Edict 支持在“技能配置”面板中管理本地技能、远程技能和内置技能仓库快选。远程 Skills 的目标是让 Agent 能力来源可见、可更新、可治理，而不是把技能散落在聊天记录或本机临时目录里。
 
-三省六部现已支持从网上连接和增补 skills 资源，无需手动复制文件。支持从以下来源获取：
+## 当前推荐来源
 
-- **GitHub 仓库** (raw.githubusercontent.com)
-- **任何 HTTPS URL** (需返回有效的 skill 文件)
-- **本地文件路径**
-- **内置仓库** (官方 skills 库)
+推荐使用：
 
----
+- GitHub raw URL
+- 公开 HTTPS URL
+- 项目内置的官方/常用技能仓库预设
 
-## 功能架构
+谨慎使用：
 
-### 1. API 端点
+- 本地文件路径
+- 私有仓库临时下载链接
+- 不可信网站上的 Markdown 文件
 
-#### `POST /api/add-remote-skill`
+如果确实需要本地文件方式，请先确认当前 `scripts/skill_manager.py --help` 和运行时适配器支持，并确保路径中不包含敏感信息。
 
-从远程 URL 或本地路径为指定 Agent 添加 skill。
+## 启动方式
 
-**请求体：**
-```json
-{
-  "agentId": "zhongshu",
-  "skillName": "code_review",
-  "sourceUrl": "https://raw.githubusercontent.com/org/skills-repo/main/code_review/SKILL.md",
-  "description": "代码审查专项技能"
-}
+```bash
+cd edict
+cp .env.example .env
+docker compose up -d --build
 ```
 
-**参数说明：**
-- `agentId` (string, 必需): 目标 Agent ID (验证有效性)
-- `skillName` (string, 必需): skill 的内部名称 (仅允许字母/数字/下划线/汉字)
-- `sourceUrl` (string, 必需): 远程 URL 或本地文件路径
-  - GitHub: `https://raw.githubusercontent.com/user/repo/branch/path/SKILL.md`
-  - 任意 HTTPS: `https://example.com/skills/my_skill.md`
-  - 本地: `file:///Users/bingsen/skills/code_review.md` 或 `/Users/bingsen/skills/code_review.md`
-- `description` (string, 可选): skill 的中文描述
+访问：
 
-**响应成功 (200)：**
-```json
-{
-  "ok": true,
-  "message": "技能 code_review 已添加到 zhongshu",
-  "skillName": "code_review",
-  "agentId": "zhongshu",
-  "source": "https://raw.githubusercontent.com/...",
-  "localPath": "/Users/bingsen/.openclaw/workspace-zhongshu/skills/code_review/SKILL.md",
-  "size": 2048,
-  "addedAt": "2026-03-02T14:30:00Z"
-}
-```
+- 前端技能配置：`http://127.0.0.1:7899` -> **技能配置**
+- 后端 API：`http://127.0.0.1:7898`
+- 前端代理 API：`http://127.0.0.1:7899/api/...`
 
-**响应失败 (400)：**
-```json
-{
-  "ok": false,
-  "error": "URL 无效或无法访问",
-  "details": "Connection timeout after 10s"
-}
-```
-
-#### `GET /api/remote-skills-list`
-
-列出所有已添加的远程 skills 及其源信息。
-
-**响应：**
-```json
-{
-  "ok": true,
-  "remoteSkills": [
-    {
-      "skillName": "code_review",
-      "agentId": "zhongshu",
-      "sourceUrl": "https://raw.githubusercontent.com/org/skills-repo/main/code_review/SKILL.md",
-      "description": "代码审查专项技能",
-      "localPath": "/Users/bingsen/.openclaw/workspace-zhongshu/skills/code_review/SKILL.md",
-      "lastUpdated": "2026-03-02T14:30:00Z",
-      "status": "valid"  // valid | invalid | not-found
-    }
-  ],
-  "count": 5
-}
-```
-
-#### `POST /api/update-remote-skill`
-
-更新已添加的远程 skill 为最新版本。
-
-**请求体：**
-```json
-{
-  "agentId": "zhongshu",
-  "skillName": "code_review"
-}
-```
-
-**响应：**
-```json
-{
-  "ok": true,
-  "message": "技能已更新",
-  "skillName": "code_review",
-  "newVersion": "2.1.0",
-  "updatedAt": "2026-03-02T15:00:00Z"
-}
-```
-
-#### `DELETE /api/remove-remote-skill`
-
-移除已添加的远程 skill。
-
-**请求体：**
-```json
-{
-  "agentId": "zhongshu",
-  "skillName": "code_review"
-}
-```
-
----
-
-## CLI 命令
+## API 端点
 
 ### 添加远程 Skill
 
 ```bash
-python3 scripts/skill_manager.py add-remote \
-  --agent zhongshu \
-  --name code_review \
-  --source https://raw.githubusercontent.com/org/skills-repo/main/code_review/SKILL.md \
-  --description "代码审查专项技能"
+curl -X POST http://127.0.0.1:7898/api/add-remote-skill \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agentId": "zhongshu",
+    "skillName": "code_review",
+    "sourceUrl": "https://raw.githubusercontent.com/openclaw-ai/skills-hub/main/code_review/SKILL.md",
+    "description": "代码审查专项技能"
+  }'
 ```
 
-### 列出远程 Skills
+字段说明：
+
+| 字段 | 说明 |
+| --- | --- |
+| `agentId` | 目标 Agent ID，例如 `zhongshu`、`menxia`、`bingbu` |
+| `skillName` | skill 内部名称，建议使用小写字母、数字、下划线 |
+| `sourceUrl` | 可直接下载的 HTTPS / GitHub raw URL |
+| `description` | 中文描述，可选 |
+
+### 查看远程 Skills
 
 ```bash
-python3 scripts/skill_manager.py list-remote
+curl http://127.0.0.1:7898/api/remote-skills-list
 ```
 
 ### 更新远程 Skill
 
 ```bash
-python3 scripts/skill_manager.py update-remote \
-  --agent zhongshu \
-  --name code_review
+curl -X POST http://127.0.0.1:7898/api/update-remote-skill \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agentId": "zhongshu",
+    "skillName": "code_review"
+  }'
 ```
 
 ### 移除远程 Skill
 
 ```bash
+curl -X POST http://127.0.0.1:7898/api/remove-remote-skill \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agentId": "zhongshu",
+    "skillName": "code_review"
+  }'
+```
+
+## CLI 命令
+
+CLI 适合批量导入、脚本化管理或排查 UI 问题。参数以当前脚本为准：
+
+```bash
+python3 scripts/skill_manager.py --help
+```
+
+常见示例：
+
+```bash
+python3 scripts/skill_manager.py add-remote \
+  --agent zhongshu \
+  --name code_review \
+  --source https://raw.githubusercontent.com/openclaw-ai/skills-hub/main/code_review/SKILL.md \
+  --description "代码审查专项技能"
+
+python3 scripts/skill_manager.py list-remote
+
+python3 scripts/skill_manager.py update-remote \
+  --agent zhongshu \
+  --name code_review
+
 python3 scripts/skill_manager.py remove-remote \
   --agent zhongshu \
   --name code_review
 ```
 
----
-
-## 官方 Skills 库
-
-### OpenClaw Skills Hub
-
-> **官方 skills 库地址**: https://github.com/openclaw-ai/skills-hub
-
-可用 skills 列表：
-
-| Skill 名称 | 描述 | 适用 Agent | 源 URL |
-|-----------|------|----------|--------|
-| `code_review` | 代码审查（支持 Python/JS/Go） | 兵部/刑部 | https://raw.githubusercontent.com/openclaw-ai/skills-hub/main/code_review/SKILL.md |
-| `api_design` | API 设计审查 | 兵部/工部 | https://raw.githubusercontent.com/openclaw-ai/skills-hub/main/api_design/SKILL.md |
-| `security_audit` | 安全审计 | 刑部 | https://raw.githubusercontent.com/openclaw-ai/skills-hub/main/security_audit/SKILL.md |
-| `data_analysis` | 数据分析 | 户部 | https://raw.githubusercontent.com/openclaw-ai/skills-hub/main/data_analysis/SKILL.md |
-| `doc_generation` | 文档生成 | 礼部 | https://raw.githubusercontent.com/openclaw-ai/skills-hub/main/doc_generation/SKILL.md |
-| `test_framework` | 测试框架设计 | 工部/刑部 | https://raw.githubusercontent.com/openclaw-ai/skills-hub/main/test_framework/SKILL.md |
-
-**一键导入官方 skills**
-
-```bash
-python3 scripts/skill_manager.py import-official-hub \
-  --agents zhongshu,menxia,shangshu,bingbu,xingbu,libu
-```
-
----
-
 ## 看板 UI 操作
 
-### 快捷添加 Skill
+1. 打开 `http://127.0.0.1:7899`。
+2. 进入 **技能配置**。
+3. 查看本地技能、远程技能和内置远程技能仓库快选。
+4. 选择一个预设技能，或手动填写远程 URL。
+5. 选择目标 Agent。
+6. 保存/导入。
 
-1. 打开看板 → 🔧 **技能配置** 面板
-2. 点击 **➕ 添加远程 Skill** 按钮
-3. 填写表单：
-   - **Agent**: 选择目标 Agent
-   - **Skill 名称**: 输入 skill 的内部 ID
-   - **远程 URL**: 粘贴 GitHub/HTTPS URL
-   - **中文描述**: 可选，简述 skill 功能
-4. 点击 **确认** 按钮
+导入后建议刷新列表确认状态，并查看后端日志排查下载失败：
 
-### 管理已添加的 Skills
-
-1. 看板 → 🔧 **技能配置** → **远程 Skills** 标签
-2. 查看已添加的所有 skills 及其源地址
-3. 操作：
-   - **查看**: 展示 SKILL.md 内容
-   - **更新**: 从源 URL 重新下载最新版本
-   - **删除**: 移除本地副本（不影响源）
-   - **复制源 URL**: 快速分享给他人
-
----
+```bash
+docker compose logs backend --tail=100
+```
 
 ## Skill 文件规范
 
-远程 skills 必须遵循标准的 Markdown 格式：
-
-### 最小必需结构
-
-```markdown
----
-name: skill_internal_name
-description: Short description
-version: 1.0.0
-tags: [tag1, tag2]
----
-
-# Skill 名称
-
-详细描述...
-
-## 输入
-
-说明接收什么参数
-
-## 处理流程
-
-具体步骤...
-
-## 输出规范
-
-输出格式说明
-```
-
-### 完整示例
+远程 Skill 建议使用 Markdown + YAML frontmatter：
 
 ```markdown
 ---
 name: code_review
-description: 对 Python/JavaScript 代码进行结构审查和优化建议
-version: 2.1.0
-author: openclaw-ai
-tags: [code-quality, security, performance]
-compatibleAgents: [bingbu, xingbu, menxia]
+description: 对代码进行结构、安全和可维护性审查
+version: 1.0.0
+tags: [code-review, security]
 ---
 
 # 代码审查技能
 
-本技能专门用于对生产代码进行多维度审查...
-
 ## 输入
 
-- `code`: 要审查的源代码
-- `language`: 编程语言 (python, javascript, go, rust)
-- `focusAreas`: 审查重点 (security, performance, style, structure)
+说明需要读取哪些文件、关注哪些问题。
 
 ## 处理流程
 
-1. 语言识别与语法验证
-2. 安全漏洞扫描
-3. 性能瓶颈识别
-4. 代码风格检查
-5. 最佳实践建议
+1. 识别语言和模块边界。
+2. 检查安全、正确性、性能和可维护性。
+3. 输出问题清单和建议。
 
 ## 输出规范
 
-```json
-{
-  "issues": [
-    {
-      "type": "security|performance|style|structure",
-      "severity": "critical|high|medium|low",
-      "location": "line:column",
-      "message": "问题描述",
-      "suggestion": "修复建议"
-    }
-  ],
-  "summary": {
-    "totalIssues": 3,
-    "criticalCount": 1,
-    "highCount": 2
-  }
-}
+- 问题位置
+- 严重程度
+- 原因
+- 修复建议
 ```
 
-## 适用场景
+## 安全边界
 
-- 兵部（代码实现）的代码产出审查
-- 刑部（合规审计）的安全检查
-- 门下省（审议把关）的质量评估
+远程 Skill 本质上是外部内容，应按供应链输入处理：
 
-## 依赖与限制
-
-- 需要 Python 3.9+
-- 支持文件大小: 最多 50KB
-- 执行超时: 30 秒
-```
-
----
-
-## 数据存储
-
-### 本地存储结构
-
-```
-~/.openclaw/
-├── workspace-zhongshu/
-│   └── skills/
-│       ├── code_review/
-│       │   ├── SKILL.md
-│       │   └── .source.json    # 存储源 URL 和元数据
-│       └── api_design/
-│           ├── SKILL.md
-│           └── .source.json
-├── ...
-```
-
-### .source.json 格式
-
-```json
-{
-  "skillName": "code_review",
-  "sourceUrl": "https://raw.githubusercontent.com/...",
-  "description": "代码审查专项技能",
-  "version": "2.1.0",
-  "addedAt": "2026-03-02T14:30:00Z",
-  "lastUpdated": "2026-03-02T14:30:00Z",
-  "lastUpdateCheck": "2026-03-02T15:00:00Z",
-  "checksum": "sha256:abc123...",
-  "status": "valid"
-}
-```
-
----
-
-## 安全考虑
-
-### URL 验证
-
-✅ **允许的 URL 类型:**
-- HTTPS URLs: `https://`
-- 本地文件: `file://` 或绝对路径
-- 相对路径: `./skills/`
-
-❌ **禁止的 URL 类型:**
-- HTTP (非 HTTPS): `http://` 被拒绝
-- 本地模式 HTTP: `http://localhost/` (避免环回攻击)
-- FTP/SSH: `ftp://`, `ssh://`
-
-### 内容验证
-
-1. **格式验证**: 确保是有效的 Markdown YAML frontmatter
-2. **大小限制**: 最多 10 MB
-3. **超时保护**: 下载超过 30 秒自动中止
-4. **路径遍历防护**: 检查解析后的 skill 名称，禁用 `../` 模式
-5. **checksum 验证**: 可选的 GPG 签名验证（仅官方库）
-
-### 隔离执行
-
-- 远程 skills 在沙箱中执行（由 OpenClaw runtime 提供）
-- 无法访问 `~/.openclaw/config.json` 等敏感文件
-- 只能访问分配的 workspace 目录
-
----
+- 优先使用可信仓库。
+- 使用固定 raw URL 或版本标签，避免来源漂移。
+- 不导入未知来源的可执行脚本。
+- 不在 Skill 中写入真实密钥、token、webhook。
+- 对团队环境，后续应补充来源白名单、签名校验和审计记录。
 
 ## 故障排查
 
-### 常见问题
-
-**Q: 下载失败，提示 "Connection timeout"**
-
-A: 检查网络连接和 URL 有效性：
-```bash
-curl -I https://raw.githubusercontent.com/...
-```
-
-**Q: Skill 显示 "invalid" 状态**
-
-A: 检查文件格式：
-```bash
-python3 -m json.tool ~/.openclaw/workspace-zhongshu/skills/xxx/SKILL.md
-```
-
-**Q: 能否从私有 GitHub 仓库导入？**
-
-A: 不支持（安全考虑）。可以：
-1. 将仓库设为公开
-2. 在本地下载后直接添加
-3. 通过 GitHub Gist 的公开链接
-
-**Q: 如何创建自己的 skills 库？**
-
-A: 参考 [OpenClaw Skills Hub](https://github.com/openclaw-ai/skills-hub) 的结构创建自己的仓库，然后：
+### 下载失败
 
 ```bash
-git clone https://github.com/yourname/my-skills-hub.git
-cd my-skills-hub
-# 创建 skill 文件结构
-# 提交 & 推送到 GitHub
+curl -I https://raw.githubusercontent.com/openclaw-ai/skills-hub/main/code_review/SKILL.md
+docker compose logs backend --tail=100
 ```
 
-然后通过 URL 或官方库导入功能添加即可。
+常见原因：
 
----
+- 网络无法访问 GitHub raw。
+- URL 不是原始文件地址。
+- HTTPS 证书或代理配置异常。
+- 文件过大或格式不符合要求。
+
+### Skill 显示 invalid
+
+检查：
+
+- frontmatter 是否完整。
+- `name` 是否和导入名称一致。
+- Markdown 是否可正常解析。
+- 后端日志是否记录了验证失败原因。
+
+### 导入成功但 Agent 不使用
+
+远程 Skill 管理只负责登记、下载和展示技能资源。实际任务是否使用该 Skill，取决于：
+
+- 当前运行时（AstrBot/OpenClaw）的技能加载方式。
+- 对应 Agent 的 SOUL.md / prompt 是否引用该技能。
+- 任务提示是否触发相关能力。
 
 ## 最佳实践
 
-### 1. 版本管理
+- 为每个 Skill 写清适用 Agent、输入、处理流程和输出格式。
+- 使用版本号管理变更。
+- 对生产团队使用固定 commit/tag 的 raw URL。
+- 删除不再使用的 Skill，避免 Agent 上下文污染。
+- 定期审查远程来源可信度。
 
-始终在 SKILL.md 的 frontmatter 中标注版本号：
-```yaml
----
-version: 2.1.0
----
-```
+## 相关文档
 
-### 2. 向后兼容
-
-更新 skill 时保持输入/输出格式兼容，避免破坏现有流程。
-
-### 3. 文档完整
-
-包含详细的:
-- 功能描述
-- 适用场景
-- 依赖说明
-- 输出示例
-
-### 4. 定期更新
-
-设置定期检查更新（周期可在看板中配置）：
-```bash
-python3 scripts/skill_manager.py check-updates --interval weekly
-```
-
-### 5. 贡献社区
-
-成熟的 skills 可向 [OpenClaw Skills Hub](https://github.com/openclaw-ai/skills-hub) 贡献。
-
----
-
-## API 完整参考
-
-详见 [任务分发流转架构文档](task-dispatch-architecture.md) 的第三部分（API 与工具）。
-
----
-
-<p align="center">
-  <sub>用 <strong>开放</strong> 的生态，赋能 <strong>制度化</strong> 的 AI 协作</sub>
-</p>
+- 快速入门：[`remote-skills-quickstart.md`](remote-skills-quickstart.md)
+- 任务分发架构：[`task-dispatch-architecture.md`](task-dispatch-architecture.md)
+- 快速上手：[`getting-started.md`](getting-started.md)

@@ -302,6 +302,13 @@ class TaskService:
         todos: list[dict],
     ) -> Task:
         task = await self._get_task(task_id)
+        if task.state in TERMINAL_STATES:
+            unfinished = [
+                todo for todo in todos
+                if str(todo.get("status", "")).lower() not in {"completed", "done"}
+            ]
+            if unfinished:
+                raise ValueError(f"Cannot update terminal task with {len(unfinished)} unfinished todo(s)")
         task.todos = todos
         task.updated_at = datetime.now(timezone.utc)
         await self.db.commit()

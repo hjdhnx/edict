@@ -1,5 +1,7 @@
 # 我用三省六部制重新设计了 AI 多 Agent 协作架构
 
+> 历史快照：本文偏早期传播文章，部分启动方式、技术栈和截图说明可能与当前主栈不一致。当前使用请以 [`../README.md`](../README.md)、[`getting-started.md`](getting-started.md) 和 [`../edict/项目价值报告V2.md`](../edict/项目价值报告V2.md) 为准。
+
 > 1300 年前的制度设计，比现代 AI 框架更懂分权。
 
 ![封面：军机处看板全貌](screenshots/01-kanban-main.png)

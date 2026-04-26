@@ -137,7 +137,11 @@ async def legacy_todos(
 
     bus = await get_event_bus()
     svc = TaskService(db, bus)
-    await svc.update_todos(task.task_id, body.todos)
+    try:
+        await svc.update_todos(task.task_id, body.todos)
+    except ValueError as e:
+        status_code = 400 if "terminal task" in str(e) else 404
+        raise HTTPException(status_code=status_code, detail=str(e))
     return {"message": "ok"}
 
 

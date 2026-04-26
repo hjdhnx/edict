@@ -23,6 +23,7 @@ from .db import init_db
 from .services.event_bus import get_event_bus
 from .api import tasks, agents, events, admin, websocket
 from .api import legacy, compat
+from .version import APP_NAME, APP_VERSION, APP_VERSION_LABEL
 
 logging.basicConfig(
     level=logging.INFO,
@@ -53,9 +54,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Edict 三省六部",
+    title=APP_NAME,
     description="事件驱动的 AI Agent 协作平台",
-    version="2.0.0",
+    version=APP_VERSION,
     lifespan=lifespan,
 )
 
@@ -82,14 +83,15 @@ app.include_router(compat.router, tags=["compat"])
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "version": "2.0.0", "engine": "edict"}
+    return {"status": "ok", "version": APP_VERSION, "versionLabel": APP_VERSION_LABEL, "engine": "edict"}
 
 
 @app.get("/api")
 async def api_root():
     return {
-        "name": "Edict 三省六部 API",
-        "version": "2.0.0",
+        "name": APP_NAME,
+        "version": APP_VERSION,
+        "versionLabel": APP_VERSION_LABEL,
         "endpoints": {
             "tasks": "/api/tasks",
             "agents": "/api/agents",

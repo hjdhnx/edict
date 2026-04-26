@@ -247,7 +247,8 @@ async def update_todos(
         await svc.update_todos(task_id, body.todos)
         return {"message": "ok"}
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        status_code = 400 if "terminal task" in str(e) else 404
+        raise HTTPException(status_code=status_code, detail=str(e))
 
 
 @router.put("/{task_id}/scheduler")

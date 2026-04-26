@@ -1,5 +1,7 @@
 <h1 align="center">⚔️ Edict · マルチエージェント・オーケストレーション</h1>
 
+> 注記: この日本語 README は過去時点の翻訳であり、現在の Docker/FastAPI/Vue/AstrBot 構成とは一部異なる可能性があります。最新のセットアップと構成は [README.md](README.md)、[docs/getting-started.md](docs/getting-started.md)、[edict/项目价值报告V2.md](edict/项目价值报告V2.md) を参照してください。
+
 <p align="center">
   <strong>中国1,300年の帝国統治をモデルにしたAIマルチエージェントシステムを構築しました。<br>古代の官僚制度は、現代のAIフレームワークよりも三権分立を深く理解していたのです。</strong>
 </p>

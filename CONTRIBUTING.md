@@ -1,31 +1,33 @@
-∏# 🤝 参与贡献
+# 参与贡献
 
-<p align="center">
-  <strong>三省六部欢迎各路英雄好汉 ⚔️</strong><br>
-  <sub>无论是修一个 typo 还是设计一个新的 Agent 角色，我们都万分感谢</sub>
-</p>
+三省六部欢迎任何形式的贡献：修文档、补测试、改 UI、完善运行时适配器、新增 Agent 规则或增强任务治理流程都可以。
 
----
+## 报告 Bug
 
-## 📋 贡献方式
+请使用 Bug Report 模板提交 Issue，并尽量包含：
 
-### 🐛 报告 Bug
+- 操作系统与 Docker Desktop / Docker Engine 版本
+- Docker Compose 版本
+- 当前运行时：AstrBot 或 OpenClaw
+- AstrBot/OpenClaw 版本与关键配置（不要贴真实密钥）
+- 浏览器与前端截图（如果涉及 UI）
+- `docker compose ps`
+- 后端日志：`docker compose logs backend --tail=100`
+- 派发日志：`docker compose logs dispatcher --tail=100`
+- 复现步骤、期望行为、实际行为
 
-请使用 [Bug Report](.github/ISSUE_TEMPLATE/bug_report.md) 模板提交 Issue，包含：
-- OpenClaw 版本（`openclaw --version`）
-- Python 版本（`python3 --version`）
-- 操作系统
-- 复现步骤（越详细越好）
-- 期望行为 vs 实际行为
-- 截图（如果涉及看板 UI）
+## 功能建议
 
-### 💡 功能建议
+使用 Feature Request 模板。建议用“旨意”格式描述需求：
 
-使用 [Feature Request](.github/ISSUE_TEMPLATE/feature_request.md) 模板。
+```text
+目标：希望解决什么问题。
+范围：涉及哪些页面、API、运行时或文档。
+产物：希望最终交付什么。
+验证：如何证明它可用。
+```
 
-我们推荐用"旨意"的格式来描述你的需求 —— 就像给皇上写奏折一样 😄
-
-### 🔧 提交 Pull Request
+## 提交 Pull Request
 
 ```bash
 # 1. Fork 本仓库
@@ -36,194 +38,117 @@ cd edict
 # 3. 创建功能分支
 git checkout -b feat/my-awesome-feature
 
-# 4. 开发 & 测试
-docker compose up -d --build  # 启动 FastAPI 后端和 React 看板验证
+# 4. 开发与验证
+cd edict/frontend && npm run build
+cd .. && docker compose up -d --build
 
 # 5. 提交
-git add .
-git commit -m "feat: 添加了一个很酷的功能"
+git add <changed-files>
+git commit -m "feat: 添加某个能力"
 
-# 6. 推送 & 创建 PR
+# 6. 推送并创建 PR
 git push origin feat/my-awesome-feature
 ```
 
----
+提交前请不要把 `.env`、真实 API key、webhook 地址或本地私密路径提交到仓库。
 
-## 🏗️ 开发环境
+## 开发环境
 
 ### 前置条件
-- [OpenClaw](https://openclaw.ai) 已安装
-- Python 3.9+
-- macOS / Linux
+
+- Docker Desktop 或 Docker Engine
+- Docker Compose
+- Node.js 18+（前端开发/构建）
+- Python 3.10+（后端开发/脚本）
+- 可选：AstrBot 或 OpenClaw 运行时
 
 ### 本地启动
 
 ```bash
-# 安装
-./install.sh
-
-# 启动服务
 cd edict
+cp .env.example .env
+# 按需填写 ASTRBOT_API_URL / ASTRBOT_API_KEY
 docker compose up -d --build
-
-# 打开浏览器
-open http://127.0.0.1:7899
 ```
 
-> 💡 **看板开箱即用**：`server.py` 内嵌 `dashboard/dashboard.html`，Docker 镜像包含预构建 React 前端
+打开：
 
-### 项目结构速览
-
-| 目录/文件 | 说明 | 改动频率 |
-|----------|------|--------|
-| `edict/frontend/src/` | React + TypeScript 看板前端 | 🔥 高 |
-| `edict/backend/app/` | FastAPI 后端、任务 API、worker 依赖服务 | 🔥 高 |
-| `agents/*/SOUL.md` | Agent 人格模板 | 🔶 中 |
-| `scripts/kanban_update_edict.py` | Edict 看板 CLI + API 上报协议 | 🔶 中 |
-| `edict/migration/` | Alembic 数据库迁移 | 🔶 中 |
-| `tests/` | 测试套件 | 🔶 中 |
-| `install.sh` | 安装脚本 | 🟢 低 |
-
----
-
-## 🏛️ 贡献者阶梯
-
-我们采用渐进式权限模型，让社区成员能够逐步承担更多责任：
-
-| 角色 | 条件 | 权限 |
-|------|------|------|
-| **🌱 Contributor** | 任何人 | Fork → PR → 等待 review |
-| **🏷️ Triage** | 3+ merged PRs | 管理 Issue 标签、分配、关闭重复 Issue |
-| **⚔️ Committer** | 5+ merged PRs + 活跃参与 review | Write 权限，可 merge 非核心路径的 PR |
-| **👑 Maintainer** | 长期信任 + 架构理解 | 可 merge 核心路径，参与架构决策 |
-
-### 晋升流程
-
-1. 维护者会主动邀请活跃贡献者晋升
-2. 也可以在 Issue 中自荐，说明你的贡献记录
-3. 所有晋升决定公开透明
-
-> **核心路径**（需 Maintainer review）：`edict/backend/`、`edict/frontend/src/`、`edict/migration/`、`agents/`、`scripts/`、`data/`
->
-> **开放路径**（Committer 可自主 merge）：`docs/`、`examples/`、`README*.md`、UI 样式调整
-
----
-
-## 📝 Commit 规范
-
-我们使用 [Conventional Commits](https://www.conventionalcommits.org/)：
-
-```
-feat:     ✨ 新功能
-fix:      🐛 修复 Bug
-docs:     📝 文档更新
-style:    🎨 代码格式（不影响逻辑）
-refactor: ♻️ 代码重构
-perf:     ⚡ 性能优化
-test:     ✅ 测试
-chore:    🔧 杂项维护
-ci:       👷 CI/CD 配置
+```text
+http://127.0.0.1:7899
 ```
 
-示例：
-```
-feat: 添加奏折导出为 PDF 功能
-fix: 修复模型切换后 Gateway 未重启的问题
-docs: 更新 README 截图
-```
-
----
-
-## 🎯 特别欢迎的贡献方向
-
-### 🎨 看板 UI
-- 深色/浅色主题切换
-- 响应式布局优化
-- 动画效果增强
-- 可访问性（a11y）改进
-
-### 🤖 新 Agent 角色
-- 适合特定行业/场景的专职 Agent
-- 新的 SOUL.md 人格模板
-- Agent 间协作模式创新
-
-### 📦 Skills 生态
-- 各部门专用技能包
-- MCP 集成技能
-- 数据处理 / 代码分析 / 文档生成专项技能
-
-### 🔗 第三方集成
-- Notion / Jira / Linear 同步
-- GitHub Issues / PR 联动
-- Slack / Discord 消息渠道
-- Webhook 扩展
-
-### 🌐 国际化
-- 日文 / 韩文 / 西班牙文翻译
-- 看板 UI 多语言支持
-
-### 📱 移动端
-- 响应式适配
-- PWA 支持
-- 移动端操作优化
-
----
-
-## 🧪 测试
+健康检查：
 
 ```bash
-# 编译检查
-python3 -m py_compile edict/backend/app/main.py
-python3 -m py_compile edict/scripts/kanban_update_edict.py
-
-# 前端类型/构建检查
-cd edict/frontend && npm run build
-
-# 启动服务验证 API
-cd ../..
-cd edict && docker compose up -d --build
-curl -s http://localhost:7898/api/live-status | python3 -m json.tool | head -20
+curl http://127.0.0.1:7898/health
+curl http://127.0.0.1:7899/api/live-status
 ```
 
----
+## 项目结构速览
 
-## 📏 代码风格
+| 目录/文件 | 说明 | 改动频率 |
+| --- | --- | --- |
+| `edict/frontend/src/` | Vue 3 + TypeScript + Ant Design Vue 总控台 | 高 |
+| `edict/backend/app/` | FastAPI 后端、任务 API、服务、worker | 高 |
+| `edict/migration/` | Alembic 数据库迁移 | 中 |
+| `edict/scripts/kanban_update_edict.py` | Edict 看板 CLI 与任务上报协议 | 中 |
+| `agents/*/SOUL.md` | 各省部 Agent 规则与角色纪律 | 中 |
+| `docs/` | 根目录文档、架构、远程技能说明 | 中 |
+| `edict/docs/` | 运行时集成文档 | 中 |
+| `tests/` | 测试套件 | 中 |
 
-- **Python**: PEP 8，使用 pathlib 处理路径
-- **TypeScript/React**: 函数组件 + Hooks，CSS 变量命名以 `--` 开头
-- **CSS**: 使用 CSS 变量（`--bg`, `--text`, `--acc` 等），BEM 风格的 class 名
-- **Markdown**: 标题使用 `#`，列表使用 `-`，代码块标注语言
+## 测试与验证
 
----
+### 前端
 
-## 🙏 行为准则
+```bash
+cd edict/frontend
+npm install
+npm run build
+```
 
-本项目采用 [Contributor Covenant](CODE_OF_CONDUCT.md) 行为准则。参与本项目即表示你同意遵守其条款。
+### 后端与主栈
 
-简要原则：
-- 保持友善和建设性
-- 尊重不同的观点和经验
-- 接受建设性的批评
-- 专注于对社区最有利的事情
-- 对其他社区成员表示同理心
+```bash
+cd edict
+docker compose up -d --build
+docker compose ps
+curl http://127.0.0.1:7898/health
+curl http://127.0.0.1:7899/api/live-status
+```
 
-**我们对骚扰行为零容忍。** 详见 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。
+### 常用日志
 
----
+```bash
+cd edict
+docker compose logs backend --tail=100
+docker compose logs dispatcher --tail=100
+docker compose logs orchestrator --tail=100
+docker compose logs outbox-relay --tail=100
+```
 
-## � 安全漏洞
+## 代码风格
 
-发现安全问题？请**不要**通过公开 Issue 报告。详见 [SECURITY.md](SECURITY.md)。
+- Python：遵循 PEP 8，优先使用 pathlib 处理路径。
+- TypeScript/Vue：使用 Composition API 与 `<script setup lang="ts">`。
+- UI：保持紧凑、高信息密度、移动端不横向溢出。
+- CSS：优先复用全局 CSS 变量和已有布局类。
+- Markdown：标题使用 `#`，列表使用 `-`，代码块标注语言。
 
----
+## 特别欢迎的贡献方向
 
-## �📬 联系方式
+- UI 体验：紧凑布局、响应式、暗黑/白天主题、可访问性。
+- 任务治理：状态机、审议、复核、归档、阻塞恢复。
+- 运行时适配：AstrBot、OpenClaw 或其他 Agent runtime。
+- Skills 生态：远程技能仓库、技能来源治理、技能模板。
+- 外部集成：Notion、Jira、Linear、GitHub Issues、Webhook。
+- 安全与生产化：认证、权限、密钥脱敏、限流、审计、备份。
+- 文档：快速上手、架构说明、运行时集成、故障排查。
 
-- GitHub Issues: [提交问题](https://github.com/cft0808/edict/issues)
-- GitHub Discussions: [社区讨论](https://github.com/cft0808/edict/discussions)
+## 安全漏洞
 
----
+发现安全问题请不要通过公开 Issue 报告。请按 [`SECURITY.md`](SECURITY.md) 中的方式处理。
 
-<p align="center">
-  <sub>感谢每一位贡献者，你们是三省六部的基石 ⚔️</sub>
-</p>
+## 行为准则
+
+本项目采用 [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) 行为准则。参与本项目即表示你同意遵守其条款。
