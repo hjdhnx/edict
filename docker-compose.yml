@@ -1,18 +1,25 @@
-# 历史 demo Compose：仅用于旧版模拟数据看板，不是当前主栈。
-# 当前主启动入口请使用 edict/docker-compose.yml，端口为前端 7899、后端 7898。
-
-version: '3.8'
+# 历史占位文件：根目录 Compose 不再启动旧版 7891 demo。
+#
+# 当前主启动入口在 edict/docker-compose.yml。
+# 请运行：
+#   cd edict
+#   cp .env.example .env
+#   docker compose up -d --build
+#
+# 访问：
+#   前端总控台 http://127.0.0.1:7899
+#   后端健康检查 http://127.0.0.1:7898/health
+#
+# 为避免误启动旧 demo，本文件只提供一个会退出的提示服务。
 
 services:
-  sansheng-demo:
-    image: cft0808/sansheng-demo:latest
-    platform: linux/amd64
-    ports:
-      - "7891:7891"
-    environment:
-      - DEMO_MODE=true
-    restart: unless-stopped
-
-# 启动: docker compose up
-# 如果在 ARM Mac (M1/M2/M3) 上运行，删除 platform 行即可
-# 访问: http://localhost:7891
+  deprecated-root-compose:
+    image: busybox:1.36
+    command:
+      - sh
+      - -c
+      - |
+        echo '根目录 docker-compose.yml 已废弃。'
+        echo '请改用：cd edict && docker compose up -d --build'
+        echo '前端：http://127.0.0.1:7899  后端：http://127.0.0.1:7898/health'
+        exit 1

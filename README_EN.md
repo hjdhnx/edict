@@ -54,7 +54,7 @@
 </p>
 </details>
 
-> 🐳 **No OpenClaw?** Run `docker run -p 7891:7891 cft0808/edict` to try the full dashboard with simulated data.
+> 🐳 **Quick try:** use Docker Compose from `edict/docker-compose.yml`, then open http://127.0.0.1:7899.
 
 ---
 
@@ -189,16 +189,26 @@ This is why Edict produces reliable results on complex tasks: there's a mandator
 
 ## 🚀 Quick Start
 
-### Docker
+### Docker Compose
 
 ```bash
-docker run -p 7891:7891 cft0808/edict
+git clone https://github.com/cft0808/edict.git
+cd edict/edict
+cp .env.example .env
+# Edit .env if you use AstrBot/OpenClaw dispatching.
+docker compose up -d --build
 ```
-Open http://localhost:7891
 
-### Full Install
+Open:
 
-**Prerequisites:** [OpenClaw](https://openclaw.ai) · Python 3.9+ · macOS/Linux
+- Dashboard: http://127.0.0.1:7899
+- Backend health: http://127.0.0.1:7898/health
+
+> The old `docker run -p 7891:7891 ...`, `dashboard/server.py`, and `run_loop.sh` flow is deprecated.
+
+### Optional OpenClaw legacy initialization
+
+**Prerequisites:** OpenClaw · Python 3.9+ · macOS/Linux
 
 ```bash
 git clone https://github.com/cft0808/edict.git
@@ -206,25 +216,16 @@ cd edict
 chmod +x install.sh && ./install.sh
 ```
 
-The installer automatically:
-- Creates workspaces for all departments (`~/.openclaw/workspace-*`, including Crown Prince/HR/Briefing)
-- Writes SOUL.md personality files for each department
-- Registers agents + permission matrix in `openclaw.json`
-- Initializes data directory + first sync
-- Restarts Gateway
+This installer is retained only for legacy OpenClaw workspace initialization. Use Docker Compose above for normal deployment.
 
-### Launch
+### Launch helpers
 
 ```bash
-# Option 1: One-click launch (recommended)
 chmod +x start.sh && ./start.sh
-
-# Option 2: Manual launch
-bash scripts/run_loop.sh &      # Data sync loop
-python3 dashboard/server.py     # Dashboard server
-
-# Open browser
-open http://127.0.0.1:7891
+# or
+bash edict.sh start
+bash edict.sh status
+bash edict.sh logs backend --tail=100
 ```
 
 <details>
@@ -337,12 +338,7 @@ edict/
 │   ├── xingbu/ gongbu/         #   Compliance / Infrastructure
 │   ├── libu_hr/                #   HR Dept
 │   └── zaochao/                #   Morning Briefing
-├── dashboard/
-│   ├── dashboard.html          # Dashboard (single file, zero deps, works out of the box)
-│   ├── dist/                   # Pre-built React frontend (included in Docker image)
-│   ├── auth.py                 # Dashboard login authentication
-│   ├── court_discuss.py        # Court discussion (multi-agent LLM debate engine)
-│   └── server.py               # API server (stdlib, zero deps)
+├── dashboard/                    # Legacy static dashboard retained for compatibility
 ├── edict/backend/              # Async backend services (SQLAlchemy + Redis)
 │   ├── app/models/
 │   │   ├── task.py             # Task model + state machine
@@ -370,10 +366,10 @@ edict/
 │   └── test_state_machine_consistency.py  # State machine consistency tests
 ├── data/                       # Runtime data (gitignored)
 ├── docs/                       # Documentation + screenshots
-├── install.sh                  # One-click installer
-├── start.sh                    # One-click launch (Dashboard + data sync)
-├── edict.service               # systemd service config (production deploy)
-├── edict.sh                    # Service management (start/stop/restart/status)
+├── install.sh                  # Legacy OpenClaw workspace initializer
+├── start.sh                    # Docker Compose launch helper
+├── edict.service               # systemd wrapper for Docker Compose
+├── edict.sh                    # Docker Compose service management helper
 └── LICENSE                     # MIT
 ```
 
@@ -384,8 +380,8 @@ edict/
 | | |
 |---|---|
 | **React 18 Frontend** | TypeScript + Vite + Zustand, 13 components |
-| **stdlib Backend** | `server.py` on `http.server`, zero dependencies |
-| **EventBus** | Redis Streams pub/sub for decoupled service communication |
+| **FastAPI Backend** | Async API services with SQLAlchemy, Alembic, and Redis |
+| **Docker Compose Stack** | Frontend, backend, Postgres, Redis, and workers start from `edict/docker-compose.yml` |
 | **Outbox Relay** | Transactional outbox pattern for reliable event delivery (at-least-once) |
 | **State Machine Audit** | Strict lifecycle transitions + full audit logging (`audit.py`) |
 | **Parallel Dispatch** | Dispatch Worker with parallel execution, exponential backoff retry, resource locking |

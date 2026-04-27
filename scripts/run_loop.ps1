@@ -12,6 +12,11 @@ param(
     [int]$ScanInterval = 120
 )
 
+Write-Host "scripts/run_loop.ps1 是旧版 dashboard/server.py 数据刷新循环，当前主栈已废弃该入口。" -ForegroundColor Yellow
+Write-Host "请使用：cd edict; docker compose up -d --build"
+Write-Host "前端：http://127.0.0.1:7899  后端：http://127.0.0.1:7898/health"
+exit 1
+
 # ── 基础配置 ──
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $env:OPENCLAW_HOME) {

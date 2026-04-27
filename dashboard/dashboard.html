@@ -2033,7 +2033,7 @@ async function loadAgentConfig(){
     const log=await fetchJ(API+'/model-change-log').catch(()=>[]);
     renderCL(log);
   }catch(e){
-    document.getElementById('model-grid').innerHTML='<div class="empty" style="grid-column:1/-1">⚠️ 请先启动本地服务器：<code>python3 dashboard/server.py</code></div>';
+    document.getElementById('model-grid').innerHTML='<div class="empty" style="grid-column:1/-1">⚠️ 旧版 dashboard 已废弃。请使用 <code>cd edict && docker compose up -d --build</code> 后打开 <code>http://127.0.0.1:7899</code></div>';
   }
 }
 async function loadAll(){

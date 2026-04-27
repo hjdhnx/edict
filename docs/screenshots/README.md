@@ -23,14 +23,15 @@
 ## 自动截图
 
 ```bash
-# 确保看板服务器正在运行
-python3 dashboard/server.py &
+# 先启动当前主栈
+cd ../../edict
+docker compose up -d --build
 
 # 自动截取全部 11 张截图
-python3 scripts/take_screenshots.py
+python3 ../scripts/take_screenshots.py
 
 # 录制 demo GIF（需要 ffmpeg）
-python3 scripts/record_demo.py
+python3 ../scripts/record_demo.py
 ```
 
 ## 建议

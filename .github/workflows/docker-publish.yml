@@ -12,7 +12,7 @@ on:
 
 env:
   REGISTRY: docker.io
-  IMAGE_NAME: cft0808/sansheng-demo
+  IMAGE_NAME: cft0808/edict
 
 jobs:
   build-and-push:
@@ -51,6 +51,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: edict/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

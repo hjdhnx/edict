@@ -6,6 +6,11 @@
 
 set -euo pipefail
 
+echo "scripts/run_loop.sh 是旧版 dashboard/server.py 数据刷新循环，当前主栈已废弃该入口。"
+echo "请使用：cd edict && docker compose up -d --build"
+echo "前端：http://127.0.0.1:7899  后端：http://127.0.0.1:7898/health"
+exit 1
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export EDICT_HOME="${EDICT_HOME:-$(dirname "$SCRIPT_DIR")}"
 INTERVAL="${1:-15}"

@@ -1,38 +1,25 @@
-# ══════════════════════════════════════════════════════════════
 # 三省六部 · systemd 服务模板
-# 部署说明: 复制到 /etc/systemd/system/edict.service
+#
+# 当前主部署方式为 edict/docker-compose.yml。本服务只负责托管当前 Compose 主栈。
+# 部署说明：
 #   sudo cp edict.service /etc/systemd/system/
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now edict
-# ══════════════════════════════════════════════════════════════
+
 [Unit]
-Description=三省六部 Multi-Agent Orchestration Dashboard
-After=network.target
+Description=Edict 三省六部 Docker Compose Stack
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
 
 [Service]
-Type=forking
-User=edict
-Group=edict
-WorkingDirectory=/opt/edict
-ExecStart=/opt/edict/edict.sh start
-ExecStop=/opt/edict/edict.sh stop
-ExecReload=/opt/edict/edict.sh restart
-
-# PID 跟踪
-PIDFile=/opt/edict/.pids/server.pid
-
-# 自动重启
-Restart=on-failure
-RestartSec=5
-
-# 环境变量（按需修改）
-Environment=EDICT_DASHBOARD_HOST=0.0.0.0
-Environment=EDICT_DASHBOARD_PORT=7891
-
-# 安全加固
-NoNewPrivileges=true
-ProtectSystem=strict
-ReadWritePaths=/opt/edict/data /opt/edict/logs /opt/edict/.pids
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/edict/edict
+ExecStart=/usr/bin/docker compose up -d --build
+ExecStop=/usr/bin/docker compose down
+ExecReload=/usr/bin/docker compose up -d --build
+TimeoutStartSec=0
 
 [Install]
 WantedBy=multi-user.target
